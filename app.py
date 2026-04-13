@@ -783,7 +783,10 @@ if mode == "实盘交易" and api_key and api_secret:
             
             # 风险控制检查
             risk_manager = st.session_state.risk_manager
-            can_trade, risk_msg = risk_manager.can_trade()
+            can_trade, risk_msg = risk_manager.check_trade_allowed(
+                trade_size=risk_amount * trade_leverage,
+                total_capital=balance
+            )
             
             if not can_trade:
                 st.error(f"🚫 风险控制阻止交易: {risk_msg}")
