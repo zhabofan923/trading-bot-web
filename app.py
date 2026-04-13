@@ -948,24 +948,36 @@ if mode == "实盘交易" and api_key and api_secret:
                     )
                     
                     if result:
-                        # 设置止损止盈
-                        if signal_type == 'LONG':
-                            sl_price = long_entry - atr_value * 1.5
-                            tp_price = long_entry + atr_value * 2.0
+                        # 检查返回结果是否包含错误
+                        if isinstance(result, dict) and result.get('error'):
+                            st.error(f"❌ 开仓失败: {result.get('error')}")
+                        elif isinstance(result, dict) and result.get('success') == False:
+                            st.error(f"❌ 开仓失败: {result.get('message', '未知错误')}")
                         else:
-                            sl_price = short_entry + atr_value * 1.5
-                            tp_price = short_entry - atr_value * 2.0
-                        
-                        # 更新状态
-                        auto_state['position'] = signal_type
-                        auto_state['entry_price'] = current_price
-                        auto_state['entry_time'] = datetime.now()
-                        auto_state['sl_price'] = sl_price
-                        auto_state['tp_price'] = tp_price
-                        auto_state['highest_profit_pct'] = 0
-                        auto_state['position_size'] = quantity
-                        
-                        st.success(f"✅ 开仓成功! {signal_type} | 数量: {quantity} | 止损: ${sl_price:.2f} | 止盈: ${tp_price:.2f}")
+                            # 设置止损止盈
+                            if signal_type == 'LONG':
+                                sl_price = long_entry - atr_value * 1.5
+                                tp_price = long_entry + atr_value * 2.0
+                            else:
+                                sl_price = short_entry + atr_value * 1.5
+                                tp_price = short_entry - atr_value * 2.0
+                            
+                            # 更新状态
+                            auto_state['position'] = signal_type
+                            auto_state['entry_price'] = current_price
+                            auto_state['entry_time'] = datetime.now()
+                            auto_state['sl_price'] = sl_price
+                            auto_state['tp_price'] = tp_price
+                            auto_state['highest_profit_pct'] = 0
+                            auto_state['position_size'] = quantity
+                            
+                            st.success(f"✅ 开仓成功! {signal_type} | 数量: {quantity} | 止损: ${sl_price:.2f} | 止盈: ${tp_price:.2f}")
+                            
+                            # 显示订单详情
+                            with st.expander("📋 订单详情"):
+                                st.json(result)
+                    else:
+                        st.error("❌ 开仓失败: API 返回空结果")
                         
                         # 发送邮件通知
                         if email_notifier and enable_signal_alert:
