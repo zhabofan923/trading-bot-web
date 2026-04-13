@@ -20,17 +20,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 使用 st.rerun 实现数据刷新
-# 注意：Streamlit 会重新运行整个脚本，但会保持 widget 状态
-import time
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
-# 每2秒刷新（平衡实时性和操作体验）
-if time.time() - st.session_state.last_refresh > 2:
-    st.session_state.last_refresh = time.time()
-    st.rerun()
-
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
     st.session_state.selected_symbol = "BTC-USDT"
@@ -415,6 +404,26 @@ df['bb_lower'] = df['sma20'] - (df['std20'] * 2)
 
 # 主界面 - 状态卡片
 st.subheader("📊 实时状态")
+
+# 实时模式开关和刷新按钮
+col_auto, col_refresh = st.columns([1, 1])
+with col_auto:
+    auto_refresh = st.toggle("🔴 实时模式 (1秒刷新)", value=False, help="开启后页面每1秒自动刷新")
+with col_refresh:
+    if st.button("🔄 手动刷新", type="secondary"):
+        st.rerun()
+
+# 如果开启实时模式，使用JavaScript自动刷新
+if auto_refresh:
+    st.markdown("""
+    <script>
+        // 每1秒自动刷新
+        setTimeout(function(){
+            window.location.reload();
+        }, 1000);
+    </script>
+    """, unsafe_allow_html=True)
+
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
