@@ -415,13 +415,15 @@ class WeexAPI:
             url = f"{self.base_url}{request_path}"
             
             # 构建请求体
+            import uuid
             body = {
                 'symbol': symbol.upper(),
                 'side': side.upper(),
                 'positionSide': position_side.upper(),
                 'type': order_type.upper(),
                 'quantity': str(quantity),
-                'timeInForce': time_in_force
+                'timeInForce': time_in_force,
+                'newClientOrderId': str(uuid.uuid4())[:32]  # 生成唯一订单ID
             }
             
             if price and order_type.upper() == 'LIMIT':
