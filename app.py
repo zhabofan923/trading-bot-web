@@ -427,9 +427,9 @@ with col2:
                         break
                 
                 if current_pos and isinstance(current_pos, dict):
-                    pos_size = float(current_pos.get('positionAmt', current_pos.get('amount', current_pos.get('size', 0))))
-                    entry_price = float(current_pos.get('entryPrice', current_pos.get('avgPrice', 0)))
-                    unrealized_pnl = float(current_pos.get('unrealizedProfit', current_pos.get('pnl', 0)))
+                    # WEEX API 字段名: size, unrealizePnl
+                    pos_size = float(current_pos.get('size', current_pos.get('positionAmt', current_pos.get('amount', 0))))
+                    unrealized_pnl = float(current_pos.get('unrealizePnl', current_pos.get('unrealizedProfit', current_pos.get('pnl', 0))))
                     
                     position_value = f"{abs(pos_size):.4f} {current_symbol.replace('-USDT', '')}"
                     position_pnl = f"${unrealized_pnl:+.2f}"
