@@ -345,9 +345,23 @@ if mode == "实盘交易" and api_key and api_secret:
         positions = weex.get_positions()
         
         if account:
-            balance = float(account.get('balance', 0))
-            total_margin = float(account.get('total_margin_balance', 0))
-            unrealized_pnl = float(account.get('unrealized_pnl', 0))
+            # 处理不同的数据结构
+            balance = 0
+            total_margin = 0
+            unrealized_pnl = 0
+            
+            if isinstance(account, list):
+                # 如果是列表，查找 USDT
+                for asset in account:
+                    if isinstance(asset, dict) and (asset.get('asset') == 'USDT' or asset.get('coin') == 'USDT'):
+                        balance = float(asset.get('availableBalance', asset.get('balance', asset.get('free', 0))))
+                        total_margin = float(asset.get('marginBalance', balance))
+                        unrealized_pnl = float(asset.get('unrealizedProfit', 0))
+                        break
+            elif isinstance(account, dict):
+                balance = float(account.get('balance', 0))
+                total_margin = float(account.get('total_margin_balance', balance))
+                unrealized_pnl = float(account.get('unrealized_pnl', 0))
             
             # 计算总权益
             total_equity = balance + unrealized_pnl
@@ -370,16 +384,17 @@ if mode == "实盘交易" and api_key and api_secret:
                 
                 positions_data = []
                 for pos in positions:
-                    pos_size = float(pos.get('positionAmt', 0))
-                    if pos_size != 0:
-                        positions_data.append({
-                            '币种': pos.get('symbol', '').replace('USDT', ''),
-                            '方向': pos.get('positionSide', 'LONG'),
-                            '数量': abs(pos_size),
-                            '开仓价': f"${float(pos.get('entryPrice', 0)):,.2f}",
-                            '杠杆': f"{pos.get('leverage', 1)}x",
-                            '未实现盈亏': f"${float(pos.get('unrealizedProfit', 0)):+.2f}"
-                        })
+                    if isinstance(pos, dict):
+                        pos_size = float(pos.get('positionAmt', pos.get('amount', pos.get('size', 0))))
+                        if pos_size != 0:
+                            positions_data.append({
+                                '币种': pos.get('symbol', '').replace('USDT', ''),
+                                '方向': pos.get('positionSide', 'LONG' if pos_size > 0 else 'SHORT'),
+                                '数量': abs(pos_size),
+                                '开仓价': f"${float(pos.get('entryPrice', pos.get('avgPrice', 0))):,.2f}",
+                                '杠杆': f"{pos.get('leverage', 1)}x",
+                                '未实现盈亏': f"${float(pos.get('unrealizedProfit', pos.get('pnl', 0))):+.2f}"
+                            })
                 
                 if positions_data:
                     import pandas as pd
