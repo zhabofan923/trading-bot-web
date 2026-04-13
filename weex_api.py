@@ -393,7 +393,7 @@ class WeexAPI:
             return []
     
     def place_order(self, symbol, side, position_side, order_type, quantity, price=None, 
-                   time_in_force='GTC', tp_trigger_price=None, sl_trigger_price=None):
+                   time_in_force='GTC', tp_trigger_price=None, sl_trigger_price=None, reduce_only=False):
         """
         下单
         
@@ -406,6 +406,7 @@ class WeexAPI:
         time_in_force: GTC/IOC/FOK/POST_ONLY
         tp_trigger_price: 止盈触发价
         sl_trigger_price: 止损触发价
+        reduce_only: 仅减仓（平仓时使用）
         """
         if not self.api_key:
             return {'success': False, 'error': 'API Key not configured'}
@@ -425,6 +426,10 @@ class WeexAPI:
                 'timeInForce': time_in_force,
                 'newClientOrderId': str(uuid.uuid4())[:32]  # 生成唯一订单ID
             }
+            
+            # 平仓时添加 reduceOnly 参数
+            if reduce_only:
+                body['reduceOnly'] = True
             
             if price and order_type.upper() == 'LIMIT':
                 body['price'] = str(price)

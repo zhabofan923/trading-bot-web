@@ -931,7 +931,7 @@ if mode == "实盘交易" and api_key and api_secret:
                     st.warning(f"🚨 触发平仓: {close_reason}")
                     
                     # 执行平仓
-                    # WEEX API: 平仓时使用原持仓方向
+                    # WEEX API: 平仓时使用 reduceOnly 参数
                     side = 'SELL' if auto_state['position'] == 'LONG' else 'BUY'
                     position_side = auto_state['position']  # LONG 或 SHORT
                     result = weex.place_order(
@@ -939,7 +939,8 @@ if mode == "实盘交易" and api_key and api_secret:
                         side=side,
                         position_side=position_side,
                         order_type='MARKET',
-                        quantity=abs(pos_size)
+                        quantity=abs(pos_size),
+                        reduce_only=True  # 标记为仅减仓（平仓）
                     )
                     
                     if result:
