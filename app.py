@@ -277,7 +277,8 @@ if mode == "策略回测" and st.session_state.get('run_backtest') and 'backtest
         
         results = backtest.run_backtest({
             'atr_multiplier_sl': st.session_state.backtest_params['atr_multiplier_sl'],
-            'atr_multiplier_tp': st.session_state.backtest_params['atr_multiplier_tp']
+            'atr_multiplier_tp': st.session_state.backtest_params['atr_multiplier_tp'],
+            'pivot_window': 10
         })
     
     # 显示统计结果
