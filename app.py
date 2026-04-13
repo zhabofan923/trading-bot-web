@@ -28,7 +28,7 @@ st.markdown("""
         window.location.reload();
     }, 3000);
 </script>
-"", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
@@ -73,13 +73,13 @@ with st.sidebar:
     
     # 邮件通知配置
     with st.expander("📧 邮件通知配置"):
-        st.markdown("""
-        **使用163邮箱发送：**
+        st.markdown('''
+        **使用163邮箱发送:**
         1. 登录163邮箱网页版
         2. 点击 [设置] → [POP3/SMTP/IMAP]
         3. 开启 SMTP 服务
         4. 获取授权码（不是登录密码）
-        """)
+        ''')
         
         # 初始化邮箱配置 - 从本地文件加载或创建默认
         import json
@@ -710,7 +710,7 @@ with col_info:
     if current_price > recent_low and current_price < recent_high:
         if long_entry > 0 and current_price < long_entry * 1.02:
             signal_type = "LONG"
-            signal_text = f"""
+            signal_text = f'''
             **当前信号: 🟢 做多**
             
             入场价: ${long_entry:,.2f}
@@ -719,10 +719,10 @@ with col_info:
             
             支撑: ${recent_low:,.2f}
             阻力: ${recent_high:,.2f}
-            """
+            '''
         elif short_entry > 0 and current_price > short_entry * 0.98:
             signal_type = "SHORT"
-            signal_text = f"""
+            signal_text = f'''
             **当前信号: 🔴 做空**
             
             入场价: ${short_entry:,.2f}
@@ -731,10 +731,10 @@ with col_info:
             
             阻力: ${recent_high:,.2f}
             支撑: ${recent_low:,.2f}
-            """
+            '''
         else:
             signal_type = "WAIT"
-            signal_text = f"""
+            signal_text = f'''
             **当前信号: 🟡 观望**
             
             价格处于支撑阻力之间
@@ -742,14 +742,14 @@ with col_info:
             
             支撑: ${recent_low:,.2f}
             阻力: ${recent_high:,.2f}
-            """
+            '''
     else:
         signal_type = None
-        signal_text = """
+        signal_text = '''
         **当前信号: ⚪ 数据加载中...**
         
         请等待数据更新
-        """
+        '''
     
     st.info(signal_text)
     
