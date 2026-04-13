@@ -278,32 +278,60 @@ class WeexAPI:
     def get_account(self):
         """
         获取账户信息（需要API Key）
+        使用 /capi/v3/balance 端点
         """
         if not self.api_key:
             return None
         
         try:
-            request_path = '/capi/v3/account'
-            url = f"{self.base_url}{request_path}"
-            headers = self._get_headers('GET', request_path)
+            # 尝试不同的端点
+            endpoints = ['/capi/v3/balance', '/capi/v3/account/balance', '/capi/v3/user/balance']
             
-            response = requests.get(url, headers=headers, timeout=10, verify=False)
-            
-            if response.status_code == 200:
-                data = response.json()
-                # 提取 USDT 余额
-                if isinstance(data, dict) and 'assets' in data:
-                    for asset in data['assets']:
-                        if asset.get('asset') == 'USDT':
+            for request_path in endpoints:
+                try:
+                    url = f"{self.base_url}{request_path}"
+                    headers = self._get_headers('GET', request_path)
+                    
+                    response = requests.get(url, headers=headers, timeout=10, verify=False)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        print(f"成功获取账户信息 from {request_path}")
+                        
+                        # 尝试解析不同的数据结构
+                        if isinstance(data, dict):
+                            # 查找 USDT 余额
+                            if 'data' in data:
+                                data = data['data']
+                            
+                            # 尝试不同的字段名
+                            balance = 0
+                            if 'assets' in data:
+                                for asset in data['assets']:
+                                    if asset.get('asset') == 'USDT' or asset.get('coin') == 'USDT':
+                                        balance = float(asset.get('availableBalance', asset.get('balance', asset.get('free', 0))))
+                                        break
+                            elif 'balances' in data:
+                                for bal in data['balances']:
+                                    if bal.get('asset') == 'USDT' or bal.get('coin') == 'USDT':
+                                        balance = float(bal.get('free', bal.get('available', 0)))
+                                        break
+                            else:
+                                # 直接返回数据结构
+                                return data
+                            
                             return {
-                                'balance': float(asset.get('availableBalance', 0)),
-                                'total_margin_balance': float(asset.get('marginBalance', 0)),
-                                'unrealized_pnl': float(asset.get('unrealizedProfit', 0))
+                                'balance': balance,
+                                'total_margin_balance': balance,
+                                'unrealized_pnl': 0
                             }
-                return data
-            else:
-                print(f"获取账户信息失败: {response.status_code} - {response.text}")
-                return None
+                        return data
+                except Exception as e:
+                    print(f"尝试 {request_path} 失败: {e}")
+                    continue
+            
+            print("所有端点都失败")
+            return None
         except Exception as e:
             print(f"获取账户信息失败: {e}")
             return None
@@ -311,39 +339,58 @@ class WeexAPI:
     def get_positions(self):
         """
         获取持仓信息（需要API Key）
+        尝试多个端点
         """
         if not self.api_key:
             return None
         
         try:
-            request_path = '/capi/v3/positions'
-            url = f"{self.base_url}{request_path}"
-            headers = self._get_headers('GET', request_path)
+            # 尝试不同的端点
+            endpoints = ['/capi/v3/positions', '/capi/v3/position', '/capi/v3/user/positions']
             
-            response = requests.get(url, headers=headers, timeout=10, verify=False)
+            for request_path in endpoints:
+                try:
+                    url = f"{self.base_url}{request_path}"
+                    headers = self._get_headers('GET', request_path)
+                    
+                    response = requests.get(url, headers=headers, timeout=10, verify=False)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        print(f"成功获取持仓信息 from {request_path}")
+                        
+                        # 尝试解析不同的数据结构
+                        positions = []
+                        
+                        if isinstance(data, dict):
+                            if 'data' in data:
+                                data = data['data']
+                            if 'positions' in data:
+                                data = data['positions']
+                        
+                        if isinstance(data, list):
+                            for pos in data:
+                                amt = float(pos.get('positionAmt', pos.get('amount', pos.get('size', 0))))
+                                if amt != 0:
+                                    positions.append({
+                                        'symbol': pos.get('symbol'),
+                                        'positionAmt': amt,
+                                        'entryPrice': float(pos.get('entryPrice', pos.get('avgPrice', 0))),
+                                        'unrealizedProfit': float(pos.get('unrealizedProfit', pos.get('pnl', 0))),
+                                        'leverage': int(pos.get('leverage', 1)),
+                                        'positionSide': pos.get('positionSide', 'LONG' if amt > 0 else 'SHORT')
+                                    })
+                        
+                        return positions
+                except Exception as e:
+                    print(f"尝试 {request_path} 失败: {e}")
+                    continue
             
-            if response.status_code == 200:
-                data = response.json()
-                # 过滤出有持仓的
-                positions = []
-                if isinstance(data, list):
-                    for pos in data:
-                        if float(pos.get('positionAmt', 0)) != 0:
-                            positions.append({
-                                'symbol': pos.get('symbol'),
-                                'positionAmt': float(pos.get('positionAmt', 0)),
-                                'entryPrice': float(pos.get('entryPrice', 0)),
-                                'unrealizedProfit': float(pos.get('unrealizedProfit', 0)),
-                                'leverage': int(pos.get('leverage', 1)),
-                                'positionSide': pos.get('positionSide', 'LONG')
-                            })
-                return positions
-            else:
-                print(f"获取持仓信息失败: {response.status_code} - {response.text}")
-                return None
+            print("所有持仓端点都失败")
+            return []
         except Exception as e:
             print(f"获取持仓信息失败: {e}")
-            return None
+            return []
     
     def place_order(self, symbol, side, position_side, order_type, quantity, price=None, 
                    time_in_force='GTC', tp_trigger_price=None, sl_trigger_price=None):
