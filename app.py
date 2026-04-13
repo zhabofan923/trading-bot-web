@@ -120,31 +120,42 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
-    # 获取交易所所有交易对
-    @st.cache_data(ttl=3600)  # 缓存1小时
-    def get_available_symbols():
+    # 获取交易对列表（优先自选，其次全部）
+    @st.cache_data(ttl=300)  # 缓存5分钟
+    def get_available_symbols(api_key, api_secret, passphrase):
         try:
+            # 先尝试获取用户的自选列表
+            if api_key and api_secret:
+                weex_auth = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+                favorite_symbols = weex_auth.get_favorite_symbols()
+                if favorite_symbols and isinstance(favorite_symbols, list):
+                    # 转换为标准格式
+                    formatted = [s.replace('USDT', '-USDT') for s in favorite_symbols if 'USDT' in s]
+                    if formatted:
+                        return formatted, "自选"
+            
+            # 如果没有自选，获取所有交易对
             weex = WeexAPI()
             symbols = weex.get_all_symbols()
             if symbols and isinstance(symbols, list):
-                # 转换为标准格式（BTCUSDT -> BTC-USDT）
-                formatted = []
-                for s in symbols:
-                    if isinstance(s, str) and 'USDT' in s:
-                        # 在USDT前加横线
-                        formatted.append(s.replace('USDT', '-USDT'))
-                return formatted if formatted else ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
-            return ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
-        except:
-            return ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
+                formatted = [s.replace('USDT', '-USDT') for s in symbols if isinstance(s, str) and 'USDT' in s]
+                return (formatted if formatted else ["BTC-USDT", "ETH-USDT", "SOL-USDT"]), "全部"
+            return ["BTC-USDT", "ETH-USDT", "SOL-USDT"], "默认"
+        except Exception as e:
+            print(f"获取交易对失败: {e}")
+            return ["BTC-USDT", "ETH-USDT", "SOL-USDT"], "默认"
     
-    available_symbols = get_available_symbols()
+    # 根据API配置获取交易对
+    available_symbols, list_type = get_available_symbols(api_key, api_secret, passphrase)
     
-    # 交易对 - WEEX 合约格式（动态获取）
+    # 显示列表类型
+    st.caption(f"📋 显示: {list_type}交易对")
+    
+    # 交易对 - WEEX 合约格式
     symbol = st.selectbox(
         "交易对",
         available_symbols,
-        index=0 if "BTC-USDT" in available_symbols else 0
+        index=0
     )
     
     # 时间周期 - WEEX 支持：1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w

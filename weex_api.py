@@ -174,6 +174,33 @@ class WeexAPI:
             print(f"获取交易所信息失败: {e}")
             return None
     
+    def get_favorite_symbols(self):
+        """
+        获取用户自选交易对（需要API Key）
+        """
+        if not self.api_key:
+            return None
+        
+        try:
+            # 尝试通过账户配置获取交易对偏好
+            # 或者从用户的交易历史中推断常用交易对
+            request_path = '/capi/v3/account/symbolConfig'
+            url = f"{self.base_url}{request_path}"
+            headers = self._get_headers('GET', request_path)
+            
+            response = requests.get(url, headers=headers, timeout=10, verify=False)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list):
+                    # 提取用户配置过的交易对
+                    symbols = [item.get('symbol') for item in data if item.get('symbol')]
+                    return symbols if symbols else None
+            return None
+        except Exception as e:
+            print(f"获取自选交易对失败: {e}")
+            return None
+    
     def place_order(self, symbol, side, position_side, order_type, quantity, price=None, 
                    time_in_force='GTC', tp_trigger_price=None, sl_trigger_price=None):
         """
