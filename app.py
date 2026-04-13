@@ -921,8 +921,9 @@ if mode == "实盘交易" and api_key and api_secret:
                     st.warning(f"🚨 触发平仓: {close_reason}")
                     
                     # 执行平仓
+                    # WEEX API: 尝试使用 BOTH 作为 position_side 来平仓
                     side = 'SELL' if auto_state['position'] == 'LONG' else 'BUY'
-                    position_side = auto_state['position']  # 平仓时保持原持仓方向
+                    position_side = 'BOTH'  # 使用 BOTH 来平仓
                     result = weex.place_order(
                         symbol=weex_symbol,
                         side=side,
@@ -958,14 +959,14 @@ if mode == "实盘交易" and api_key and api_secret:
                                 st.json(result)
                             
                             st.success(f"✅ 平仓成功! 盈亏: {pnl_pct:.2f}%")
-                        
-                        # 发送邮件通知
-                        if email_notifier and enable_position_alert:
-                            email_notifier.send_email(
-                                f"平仓通知 - {current_symbol}",
-                                f"{current_symbol} 平仓\n方向: {trade_record['side']}\n入场: {entry_price}\n出场: {current_price}\n盈亏: {pnl_pct:.2f}%\n原因: {close_reason}",
-                                f"<h2>平仓通知</h2><p>币种: {current_symbol}</p><p>方向: {trade_record['side']}</p><p>盈亏: {pnl_pct:.2f}%</p><p>原因: {close_reason}</p>"
-                            )
+                            
+                            # 发送邮件通知（只在成功时发送）
+                            if email_notifier and enable_position_alert:
+                                email_notifier.send_email(
+                                    f"平仓通知 - {current_symbol}",
+                                    f"{current_symbol} 平仓\n方向: {trade_record['side']}\n入场: {entry_price}\n出场: {current_price}\n盈亏: {pnl_pct:.2f}%\n原因: {close_reason}",
+                                    f"<h2>平仓通知</h2><p>币种: {current_symbol}</p><p>方向: {trade_record['side']}</p><p>盈亏: {pnl_pct:.2f}%</p><p>原因: {close_reason}</p>"
+                                )
             
             # 如果没有持仓，检查开仓信号
             elif not current_position and signal_type in ['LONG', 'SHORT'] and balance > 0:
