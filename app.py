@@ -311,6 +311,10 @@ with st.sidebar:
     available_leverages = [l for l in leverage_options if l <= max_leverage]
     default_leverage_index = min(2, len(available_leverages) - 1)
     
+    # 杠杆风险提示
+    if max_leverage >= 100:
+        st.warning("⚠️ **高风险警告**: 该币种支持 100x 以上杠杆，爆仓风险极高！建议新手使用 10-20x")
+    
     # 回测参数（仅在回测模式显示）
     if mode == "策略回测":
         st.subheader("📊 回测参数")
@@ -925,8 +929,13 @@ if mode == "实盘交易" and api_key and api_secret:
                 should_close = False
                 close_reason = ""
                 
+                # 0. 爆仓保护（亏损超过 50% 立即平仓）
+                if pnl_pct < -0.50:
+                    should_close = True
+                    close_reason = f"爆仓保护 (亏损 {pnl_pct:.1%})"
+                
                 # 1. 止损
-                if auto_state['position'] == 'LONG' and current_price <= auto_state['sl_price']:
+                elif auto_state['position'] == 'LONG' and current_price <= auto_state['sl_price']:
                     should_close = True
                     close_reason = "止损"
                 elif auto_state['position'] == 'SHORT' and current_price >= auto_state['sl_price']:
