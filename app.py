@@ -87,19 +87,29 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
-    # 获取交易对列表
-    def get_available_symbols():
+    # 获取交易对列表（优先自选）
+    def get_available_symbols(api_key, api_secret, passphrase):
         try:
-            weex = WeexAPI()
-            symbols = weex.get_all_symbols()
-            if symbols and isinstance(symbols, list):
-                formatted = [s.replace('USDT', '-USDT') for s in symbols if isinstance(s, str) and 'USDT' in s]
-                return formatted if formatted else ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
-            return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
-        except:
+            # 先尝试获取用户的自选列表
+            if api_key and api_secret:
+                weex_auth = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+                favorite_symbols = weex_auth.get_favorite_symbols()
+                if favorite_symbols and isinstance(favorite_symbols, list) and len(favorite_symbols) > 0:
+                    # 转换为标准格式
+                    formatted = [s.replace('USDT', '-USDT') for s in favorite_symbols if 'USDT' in s]
+                    if formatted:
+                        st.caption(f"📋 显示: 自选交易对 ({len(formatted)}个)")
+                        return formatted
+            
+            # 如果没有自选，获取常用交易对（不是全部）
+            common_symbols = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT", "XRP-USDT", "DOGE-USDT", "LTC-USDT"]
+            st.caption(f"📋 显示: 常用交易对")
+            return common_symbols
+        except Exception as e:
+            st.caption(f"📋 显示: 默认交易对")
             return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
     
-    available_symbols = get_available_symbols()
+    available_symbols = get_available_symbols(api_key, api_secret, passphrase)
     
     # 交易对选择 - 关键：使用 on_change 回调
     def on_symbol_change():

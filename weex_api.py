@@ -177,26 +177,37 @@ class WeexAPI:
     def get_favorite_symbols(self):
         """
         获取用户自选交易对（需要API Key）
+        从用户的持仓和账户配置中获取常用交易对
         """
         if not self.api_key:
             return None
         
         try:
-            # 尝试通过账户配置获取交易对偏好
-            # 或者从用户的交易历史中推断常用交易对
+            symbols = set()
+            
+            # 1. 从持仓中获取交易对
+            positions = self.get_positions()
+            if positions and isinstance(positions, list):
+                for pos in positions:
+                    symbol = pos.get('symbol')
+                    if symbol:
+                        symbols.add(symbol)
+            
+            # 2. 从账户配置中获取交易对
             request_path = '/capi/v3/account/symbolConfig'
             url = f"{self.base_url}{request_path}"
             headers = self._get_headers('GET', request_path)
             
             response = requests.get(url, headers=headers, timeout=10, verify=False)
-            
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, list):
-                    # 提取用户配置过的交易对
-                    symbols = [item.get('symbol') for item in data if item.get('symbol')]
-                    return symbols if symbols else None
-            return None
+                    for item in data:
+                        symbol = item.get('symbol')
+                        if symbol:
+                            symbols.add(symbol)
+            
+            return list(symbols) if symbols else None
         except Exception as e:
             print(f"获取自选交易对失败: {e}")
             return None
