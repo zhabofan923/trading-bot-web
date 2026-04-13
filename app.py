@@ -1,4 +1,5 @@
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -18,6 +19,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# 自动刷新 - 每5秒刷新一次
+st_autorefresh(interval=5000, key="data_refresh")
 
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
