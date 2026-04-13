@@ -133,18 +133,22 @@ class Backtester:
             signal = df['signal'].iloc[i]
             atr = df['atr'].iloc[i]
             
-            # 检查资金是否耗尽（爆仓）
-            if capital <= 0:
+            # 检查资金是否耗尽（爆仓）- 资金低于初始资金的1%认为爆仓
+            if capital < self.initial_capital * 0.01:
+                # 如果有持仓，强制平仓
                 if position != 0 and trade:
                     trade['exit_time'] = current_time
                     trade['exit_price'] = current_price
                     trade['pnl'] = -1.0
-                    trade['pnl_amount'] = -self.initial_capital * position_size_pct
+                    trade['pnl_amount'] = -trade['risk_amount']
+                    trade['exit_reason'] = '爆仓'
                     self.trades.append(trade)
-                position = 0
-                trade = None
-                self.equity_curve.append({'time': current_time, 'equity': 0})
-                continue
+                    position = 0
+                    trade = None
+                # 记录爆仓状态
+                self.equity_curve.append({'time': current_time, 'equity': capital})
+                # 爆仓后停止交易
+                break
             
             # 开仓（只用部分资金，控制风险）
             if position == 0 and signal != 0 and capital > 0:
@@ -208,15 +212,19 @@ class Backtester:
                     highest_profit = 0
             
             # 记录权益曲线
-            if position == 0:
+            if position == 0 or trade is None:
                 self.equity_curve.append({'time': current_time, 'equity': capital})
             else:
-                # 计算浮动盈亏
+                # 计算浮动盈亏（基于实际仓位）
                 if position == 1:
-                    unrealized_pnl = (current_price - entry_price) / entry_price * self.leverage
+                    price_change = (current_price - entry_price) / entry_price
                 else:
-                    unrealized_pnl = (entry_price - current_price) / entry_price * self.leverage
-                self.equity_curve.append({'time': current_time, 'equity': capital * (1 + unrealized_pnl)})
+                    price_change = (entry_price - current_price) / entry_price
+                
+                # 浮动盈亏 = 价格变动 × 杠杆 × 风险金额
+                unrealized_pnl_amount = price_change * self.leverage * trade['risk_amount']
+                current_equity = capital + unrealized_pnl_amount
+                self.equity_curve.append({'time': current_time, 'equity': max(0, current_equity)})
         
         self.final_capital = capital
     
