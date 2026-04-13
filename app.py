@@ -790,16 +790,26 @@ if mode == "实盘交易" and api_key and api_secret:
             if current_pos:
                 pos_size = float(current_pos.get('positionAmt', current_pos.get('amount', current_pos.get('size', 0))))
                 entry_price = float(current_pos.get('entryPrice', current_pos.get('avgPrice', 0)))
-                unrealized_pnl = float(current_pos.get('unrealizedProfit', current_pos.get('pnl', 0)))
+                
+                # 尝试不同的字段名获取未实现盈亏
+                unrealized_pnl = float(current_pos.get('unrealizedProfit', 
+                    current_pos.get('pnl', 
+                    current_pos.get('unrealizedPnl', 
+                    current_pos.get('profit', 0)))))
                 
                 # 计算盈亏百分比
-                if entry_price > 0:
-                    pnl_pct = (unrealized_pnl / (abs(pos_size) * entry_price)) * 100
+                position_value = abs(pos_size) * entry_price
+                if position_value > 0:
+                    pnl_pct = (unrealized_pnl / position_value) * 100
                 else:
                     pnl_pct = 0
                 
                 side = 'LONG' if pos_size > 0 else 'SHORT'
                 st.info(f"📊 当前持仓: {side} | 数量: {abs(pos_size):.4f} | 盈亏: ${unrealized_pnl:+.2f} ({pnl_pct:+.2f}%)")
+                
+                # 调试信息
+                with st.expander("📋 持仓详情（调试）"):
+                    st.json(current_pos)
                 
                 # 同步本地状态
                 auto_state['position'] = side
@@ -921,9 +931,9 @@ if mode == "实盘交易" and api_key and api_secret:
                     st.warning(f"🚨 触发平仓: {close_reason}")
                     
                     # 执行平仓
-                    # WEEX API: 尝试使用 BOTH 作为 position_side 来平仓
+                    # WEEX API: 平仓时使用原持仓方向
                     side = 'SELL' if auto_state['position'] == 'LONG' else 'BUY'
-                    position_side = 'BOTH'  # 使用 BOTH 来平仓
+                    position_side = auto_state['position']  # LONG 或 SHORT
                     result = weex.place_order(
                         symbol=weex_symbol,
                         side=side,
