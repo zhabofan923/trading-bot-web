@@ -276,11 +276,45 @@ with col1:
     )
 
 with col2:
+    # 获取持仓信息
+    position_value = "--"
+    position_pnl = "--"
+    
+    if api_key and api_secret:
+        try:
+            weex = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+            positions = weex.get_positions()
+            if positions:
+                # 查找当前币种的持仓
+                current_pos = None
+                for pos in positions:
+                    if pos.get('symbol') == weex_symbol:
+                        current_pos = pos
+                        break
+                
+                if current_pos:
+                    pos_size = float(current_pos.get('positionAmt', 0))
+                    entry_price = float(current_pos.get('entryPrice', 0))
+                    unrealized_pnl = float(current_pos.get('unrealizedProfit', 0))
+                    
+                    position_value = f"{abs(pos_size):.4f} {current_symbol.replace('-USDT', '')}"
+                    position_pnl = f"${unrealized_pnl:+.2f}"
+                    pnl_color = "normal" if unrealized_pnl >= 0 else "inverse"
+                else:
+                    position_value = "无持仓"
+                    position_pnl = "--"
+            else:
+                position_value = "无持仓"
+                position_pnl = "--"
+        except:
+            position_value = "--"
+            position_pnl = "--"
+    
     st.metric(
         label="持仓",
-        value="--",
-        delta="--",
-        delta_color="off"
+        value=position_value,
+        delta=position_pnl,
+        delta_color="normal" if position_pnl != "--" and not position_pnl.startswith("-") else "inverse" if position_pnl.startswith("-") else "off"
     )
 
 with col3:
@@ -299,6 +333,67 @@ with col4:
         delta=current_symbol,
         delta_color="off"
     )
+
+# 账户信息面板（实盘模式）
+if mode == "实盘交易" and api_key and api_secret:
+    st.markdown("---")
+    st.subheader("💰 账户信息")
+    
+    try:
+        weex = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+        account = weex.get_account()
+        positions = weex.get_positions()
+        
+        if account:
+            balance = float(account.get('balance', 0))
+            total_margin = float(account.get('total_margin_balance', 0))
+            unrealized_pnl = float(account.get('unrealized_pnl', 0))
+            
+            # 计算总权益
+            total_equity = balance + unrealized_pnl
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("可用余额", f"${balance:,.2f}")
+            with col2:
+                st.metric("保证金余额", f"${total_margin:,.2f}")
+            with col3:
+                color = "normal" if unrealized_pnl >= 0 else "inverse"
+                st.metric("未实现盈亏", f"${unrealized_pnl:+.2f}", delta_color=color)
+            with col4:
+                st.metric("总权益", f"${total_equity:,.2f}")
+            
+            # 显示持仓详情
+            if positions and len(positions) > 0:
+                st.markdown("---")
+                st.subheader("📊 持仓详情")
+                
+                positions_data = []
+                for pos in positions:
+                    pos_size = float(pos.get('positionAmt', 0))
+                    if pos_size != 0:
+                        positions_data.append({
+                            '币种': pos.get('symbol', '').replace('USDT', ''),
+                            '方向': pos.get('positionSide', 'LONG'),
+                            '数量': abs(pos_size),
+                            '开仓价': f"${float(pos.get('entryPrice', 0)):,.2f}",
+                            '杠杆': f"{pos.get('leverage', 1)}x",
+                            '未实现盈亏': f"${float(pos.get('unrealizedProfit', 0)):+.2f}"
+                        })
+                
+                if positions_data:
+                    import pandas as pd
+                    positions_df = pd.DataFrame(positions_data)
+                    st.dataframe(positions_df, use_container_width=True)
+                else:
+                    st.info("当前无持仓")
+            else:
+                st.info("当前无持仓")
+        else:
+            st.warning("无法获取账户信息，请检查API配置")
+    
+    except Exception as e:
+        st.error(f"获取账户信息失败: {e}")
 
 # 回测结果显示
 if mode == "策略回测" and st.session_state.get('run_backtest') and 'backtest_params' in st.session_state:
