@@ -417,8 +417,8 @@ with col_refresh:
 if auto_refresh:
     st.markdown("""
     <script>
-        // 每1秒自动刷新
-        setTimeout(function(){
+        // 每1秒自动刷新（持续刷新）
+        setInterval(function(){
             window.location.reload();
         }, 1000);
     </script>
