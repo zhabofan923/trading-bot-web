@@ -120,8 +120,7 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
-    # 获取交易对列表（优先自选，其次全部）
-    @st.cache_data(ttl=60)
+    # 获取交易对列表（优先自选，其次全部，不缓存确保实时）
     def get_available_symbols(api_key, api_secret, passphrase):
         try:
             # 先尝试获取用户的自选列表
@@ -250,14 +249,9 @@ def get_weex_api(api_key, api_secret, passphrase):
         return WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
     return None
 
-# 获取数据（根据币种和时间周期缓存）
-@st.cache_data(ttl=60)
-def get_market_data(exchange, symbol, timeframe):
-    """获取市场数据，根据参数自动缓存"""
-    return fetch_ohlcv(exchange, symbol, timeframe)
-
+# 获取数据（不使用缓存，确保实时更新）
 with st.spinner(f"正在获取 {symbol} 数据..."):
-    df = get_market_data(exchange, symbol, timeframe)
+    df = fetch_ohlcv(exchange, symbol, timeframe)
 
 # 如果获取失败，使用模拟数据
 if df is None or df.empty:
