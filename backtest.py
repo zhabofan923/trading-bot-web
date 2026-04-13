@@ -185,9 +185,9 @@ class Backtester:
                 reverse_signal = (position == 1 and signal == -1) or (position == -1 and signal == 1)
                 liquidation = pnl <= -1.0  # 爆仓
                 
-                # 移动止盈：盈利回撤超过阈值时平仓
+                # 移动止盈：盈利回撤超过阈值时平仓（只在盈利时触发）
                 trailing_stop_triggered = False
-                if highest_profit > 0.02:  # 盈利超过2%后启动移动止盈
+                if pnl > 0 and highest_profit > 0.05:  # 盈利超过5%后启动移动止盈
                     drawdown_from_peak = highest_profit - pnl
                     if drawdown_from_peak > trailing_stop_pct / 100:  # 回撤超过0.5%
                         trailing_stop_triggered = True
