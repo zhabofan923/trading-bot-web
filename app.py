@@ -768,17 +768,54 @@ if mode == "实盘交易" and api_key and api_secret:
     
     auto_state = st.session_state.auto_trade_state
     
-    # 自动交易开关
+    # 自动交易开关 - 同步两个状态
     col1, col2 = st.columns([1, 3])
     with col1:
-        auto_enabled = st.toggle("启用自动交易", value=auto_state['enabled'])
+        auto_enabled = st.toggle("启用自动交易", value=st.session_state.auto_trading_enabled)
         auto_state['enabled'] = auto_enabled
+        st.session_state.auto_trading_enabled = auto_enabled
     
     with col2:
-        if auto_state['position']:
-            st.info(f"📊 当前持仓: {auto_state['position']} | 入场价: ${auto_state['entry_price']:,.2f} | 浮动盈亏: {auto_state.get('unrealized_pnl', 0):.2f}%")
-        else:
-            st.info("📊 当前无持仓")
+        # 从API获取真实持仓状态
+        try:
+            weex = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+            positions = weex.get_positions()
+            current_pos = None
+            if positions and isinstance(positions, list):
+                for pos in positions:
+                    if isinstance(pos, dict) and pos.get('symbol') == weex_symbol:
+                        current_pos = pos
+                        break
+            
+            if current_pos:
+                pos_size = float(current_pos.get('positionAmt', current_pos.get('amount', current_pos.get('size', 0))))
+                entry_price = float(current_pos.get('entryPrice', current_pos.get('avgPrice', 0)))
+                unrealized_pnl = float(current_pos.get('unrealizedProfit', current_pos.get('pnl', 0)))
+                
+                # 计算盈亏百分比
+                if entry_price > 0:
+                    pnl_pct = (unrealized_pnl / (abs(pos_size) * entry_price)) * 100
+                else:
+                    pnl_pct = 0
+                
+                side = 'LONG' if pos_size > 0 else 'SHORT'
+                st.info(f"📊 当前持仓: {side} | 数量: {abs(pos_size):.4f} | 盈亏: ${unrealized_pnl:+.2f} ({pnl_pct:+.2f}%)")
+                
+                # 同步本地状态
+                auto_state['position'] = side
+                auto_state['entry_price'] = entry_price
+            elif auto_state['position']:
+                # API显示无持仓但本地有记录，可能已平仓
+                st.warning(f"⚠️ 本地记录有持仓但API显示无持仓，可能已手动平仓")
+                auto_state['position'] = None
+            else:
+                st.info("📊 当前无持仓")
+        except Exception as e:
+            # 如果API查询失败，使用本地状态
+            if auto_state['position']:
+                st.info(f"📊 当前持仓: {auto_state['position']} | 入场价: ${auto_state['entry_price']:,.2f} | 浮动盈亏: {auto_state.get('unrealized_pnl', 0):.2f}% (本地缓存)")
+            else:
+                st.info("📊 当前无持仓")
     
     if auto_enabled:
         # 获取账户信息
