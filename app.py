@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import time
 import pandas as pd
 import numpy as np
@@ -21,8 +20,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 使用 streamlit-autorefresh 实现自动刷新
-st_autorefresh(interval=1000, key="data_refresh")
+# 使用 HTML meta refresh 实现自动刷新
+st.markdown('<meta http-equiv="refresh" content="1">', unsafe_allow_html=True)
 
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
