@@ -275,6 +275,76 @@ class WeexAPI:
             print(f"获取自选交易对失败: {e}")
             return None
     
+    def get_account(self):
+        """
+        获取账户信息（需要API Key）
+        """
+        if not self.api_key:
+            return None
+        
+        try:
+            request_path = '/capi/v3/account'
+            url = f"{self.base_url}{request_path}"
+            headers = self._get_headers('GET', request_path)
+            
+            response = requests.get(url, headers=headers, timeout=10, verify=False)
+            
+            if response.status_code == 200:
+                data = response.json()
+                # 提取 USDT 余额
+                if isinstance(data, dict) and 'assets' in data:
+                    for asset in data['assets']:
+                        if asset.get('asset') == 'USDT':
+                            return {
+                                'balance': float(asset.get('availableBalance', 0)),
+                                'total_margin_balance': float(asset.get('marginBalance', 0)),
+                                'unrealized_pnl': float(asset.get('unrealizedProfit', 0))
+                            }
+                return data
+            else:
+                print(f"获取账户信息失败: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"获取账户信息失败: {e}")
+            return None
+    
+    def get_positions(self):
+        """
+        获取持仓信息（需要API Key）
+        """
+        if not self.api_key:
+            return None
+        
+        try:
+            request_path = '/capi/v3/positions'
+            url = f"{self.base_url}{request_path}"
+            headers = self._get_headers('GET', request_path)
+            
+            response = requests.get(url, headers=headers, timeout=10, verify=False)
+            
+            if response.status_code == 200:
+                data = response.json()
+                # 过滤出有持仓的
+                positions = []
+                if isinstance(data, list):
+                    for pos in data:
+                        if float(pos.get('positionAmt', 0)) != 0:
+                            positions.append({
+                                'symbol': pos.get('symbol'),
+                                'positionAmt': float(pos.get('positionAmt', 0)),
+                                'entryPrice': float(pos.get('entryPrice', 0)),
+                                'unrealizedProfit': float(pos.get('unrealizedProfit', 0)),
+                                'leverage': int(pos.get('leverage', 1)),
+                                'positionSide': pos.get('positionSide', 'LONG')
+                            })
+                return positions
+            else:
+                print(f"获取持仓信息失败: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"获取持仓信息失败: {e}")
+            return None
+    
     def place_order(self, symbol, side, position_side, order_type, quantity, price=None, 
                    time_in_force='GTC', tp_trigger_price=None, sl_trigger_price=None):
         """
