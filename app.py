@@ -70,19 +70,42 @@ with st.sidebar:
         4. 获取授权码（不是登录密码）
         """)
         
-        # 初始化邮箱配置 session state
+        # 初始化邮箱配置 - 从本地文件加载或创建默认
+        import json
+        import os
+        
+        config_file = 'email_config.json'
+        
+        # 尝试从文件加载配置
         if 'email_config' not in st.session_state:
-            st.session_state.email_config = {
-                'provider': "163邮箱",
-                'sender': "",
-                'auth_code': "",
-                'receiver': "",
-                'enable_price': True,
-                'enable_signal': True,
-                'enable_position': True,
-                'profit_threshold': 100.0,
-                'loss_threshold': -50.0
-            }
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, 'r') as f:
+                        st.session_state.email_config = json.load(f)
+                except:
+                    st.session_state.email_config = {
+                        'provider': "163邮箱",
+                        'sender': "",
+                        'auth_code': "",
+                        'receiver': "",
+                        'enable_price': True,
+                        'enable_signal': True,
+                        'enable_position': True,
+                        'profit_threshold': 100.0,
+                        'loss_threshold': -50.0
+                    }
+            else:
+                st.session_state.email_config = {
+                    'provider': "163邮箱",
+                    'sender': "",
+                    'auth_code': "",
+                    'receiver': "",
+                    'enable_price': True,
+                    'enable_signal': True,
+                    'enable_position': True,
+                    'profit_threshold': 100.0,
+                    'loss_threshold': -50.0
+                }
         
         email_provider = st.selectbox("邮箱服务商", ["163邮箱", "QQ邮箱", "其他"], 
                                      index=["163邮箱", "QQ邮箱", "其他"].index(st.session_state.email_config['provider']),
@@ -126,40 +149,52 @@ with st.sidebar:
                                             step=10.0, key="loss_threshold")
             st.session_state.email_config['loss_threshold'] = loss_threshold
         
-        # 测试邮件按钮
+        # 保存配置按钮
         st.markdown("---")
-        if email_sender and email_auth_code and email_receiver:
-            if st.button("📤 发送测试邮件", key="test_email_btn"):
-                with st.spinner("发送中..."):
-                    # 根据邮箱服务商选择SMTP服务器
-                    if email_provider == "163邮箱":
-                        smtp_server = "smtp.163.com"
-                        smtp_port = 25
-                    elif email_provider == "QQ邮箱":
-                        smtp_server = "smtp.qq.com"
-                        smtp_port = 587
-                    else:
-                        smtp_server = "smtp.163.com"
-                        smtp_port = 25
-                    
-                    test_notifier = EmailNotifier(
-                        smtp_server=smtp_server,
-                        smtp_port=smtp_port,
-                        sender_email=email_sender,
-                        sender_password=email_auth_code,
-                        receiver_email=email_receiver
-                    )
-                    
-                    if test_notifier.send_email(
-                        "交易机器人测试邮件",
-                        "这是一封测试邮件，如果收到说明配置成功！",
-                        "<h2>✅ 交易机器人邮件配置成功</h2><p>您的邮件通知功能已正常工作。</p>"
-                    ):
-                        st.success("✅ 测试邮件发送成功！请查收")
-                    else:
-                        st.error("❌ 发送失败，请检查邮箱和授权码")
-        else:
-            st.info("请填写完整的邮箱配置信息后测试")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 保存配置", key="save_email_config"):
+                try:
+                    with open(config_file, 'w') as f:
+                        json.dump(st.session_state.email_config, f)
+                    st.success("✅ 配置已保存到本地")
+                except Exception as e:
+                    st.error(f"❌ 保存失败: {e}")
+        
+        with col2:
+            # 测试邮件按钮
+            if email_sender and email_auth_code and email_receiver:
+                if st.button("📤 发送测试邮件", key="test_email_btn"):
+                    with st.spinner("发送中..."):
+                        # 根据邮箱服务商选择SMTP服务器
+                        if email_provider == "163邮箱":
+                            smtp_server = "smtp.163.com"
+                            smtp_port = 25
+                        elif email_provider == "QQ邮箱":
+                            smtp_server = "smtp.qq.com"
+                            smtp_port = 587
+                        else:
+                            smtp_server = "smtp.163.com"
+                            smtp_port = 25
+                        
+                        test_notifier = EmailNotifier(
+                            smtp_server=smtp_server,
+                            smtp_port=smtp_port,
+                            sender_email=email_sender,
+                            sender_password=email_auth_code,
+                            receiver_email=email_receiver
+                        )
+                        
+                        if test_notifier.send_email(
+                            "交易机器人测试邮件",
+                            "这是一封测试邮件，如果收到说明配置成功！",
+                            "<h2>✅ 交易机器人邮件配置成功</h2><p>您的邮件通知功能已正常工作。</p>"
+                        ):
+                            st.success("✅ 测试邮件发送成功！请查收")
+                        else:
+                            st.error("❌ 发送失败，请检查邮箱和授权码")
+            else:
+                st.info("请填写完整的邮箱配置信息后测试")
     
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
