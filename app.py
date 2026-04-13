@@ -783,9 +783,11 @@ if mode == "实盘交易" and api_key and api_secret:
             
             # 风险控制检查
             risk_manager = st.session_state.risk_manager
+            # 计算实际仓位价值（用于风险检查）
+            position_value = risk_amount * trade_leverage
             can_trade, risk_msg = risk_manager.check_trade_allowed(
-                trade_size=risk_amount * trade_leverage,
-                total_capital=balance
+                trade_size=position_value,
+                total_capital=balance * trade_leverage  # 使用带杠杆的总资金
             )
             
             if not can_trade:
@@ -914,9 +916,11 @@ if mode == "实盘交易" and api_key and api_secret:
                     
                     # 执行开仓
                     side = 'BUY' if signal_type == 'LONG' else 'SELL'
+                    position_side = 'LONG' if signal_type == 'LONG' else 'SHORT'
                     result = weex.place_order(
                         symbol=weex_symbol,
                         side=side,
+                        position_side=position_side,
                         order_type='MARKET',
                         quantity=quantity
                     )
