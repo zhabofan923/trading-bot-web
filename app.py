@@ -173,13 +173,34 @@ with st.sidebar:
         index=4
     )
     
+    # 获取当前币种的杠杆信息
+    weex_symbol = st.session_state.selected_symbol.replace('-', '')
+    max_leverage = 400  # WEEX 默认最高400倍
+    try:
+        weex_temp = WeexAPI()
+        max_leverage = weex_temp.get_symbol_leverage(weex_symbol)
+    except:
+        pass
+    
+    # 生成杠杆选项（支持到400x）
+    leverage_options = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 300, 400]
+    available_leverages = [l for l in leverage_options if l <= max_leverage]
+    default_leverage_index = min(2, len(available_leverages) - 1)
+    
+    st.caption(f"📊 {weex_symbol} 最大杠杆: {max_leverage}x")
+    
     # 回测参数
     if mode == "策略回测":
         st.subheader("📊 回测参数")
         initial_capital = st.number_input("初始资金 (USDT)", value=10000, step=1000)
-        leverage = st.selectbox("回测杠杆", [1, 5, 10, 20], index=2)
-        atr_sl = st.slider("止损倍数(ATR)", 0.5, 3.0, 1.5, 0.1)
-        atr_tp = st.slider("止盈倍数(ATR)", 0.5, 5.0, 2.0, 0.1)
+        leverage = st.selectbox(
+            f"回测杠杆 (最大{max_leverage}x)",
+            available_leverages,
+            index=default_leverage_index,
+            key="backtest_leverage"
+        )
+        atr_sl = st.slider("止损倍数(ATR)", 0.5, 3.0, 1.5, 0.1, key="backtest_sl")
+        atr_tp = st.slider("止盈倍数(ATR)", 0.5, 5.0, 2.0, 0.1, key="backtest_tp")
         
         if st.button("🚀 开始回测", type="primary"):
             st.session_state.run_backtest = True
@@ -187,7 +208,8 @@ with st.sidebar:
                 'initial_capital': initial_capital,
                 'leverage': leverage,
                 'atr_multiplier_sl': atr_sl,
-                'atr_multiplier_tp': atr_tp
+                'atr_multiplier_tp': atr_tp,
+                'pivot_window': 10
             }
     
     # 策略参数
@@ -417,7 +439,8 @@ if mode == "策略回测" and st.session_state.get('run_backtest') and 'backtest
         
         results = backtest.run_backtest({
             'atr_multiplier_sl': st.session_state.backtest_params['atr_multiplier_sl'],
-            'atr_multiplier_tp': st.session_state.backtest_params['atr_multiplier_tp']
+            'atr_multiplier_tp': st.session_state.backtest_params['atr_multiplier_tp'],
+            'pivot_window': st.session_state.backtest_params.get('pivot_window', 10)
         })
     
     # 显示统计结果
