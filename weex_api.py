@@ -177,19 +177,33 @@ class WeexAPI:
     def get_symbol_leverage(self, symbol):
         """
         获取指定交易对的最大杠杆倍数
+        WEEX 合约支持最高 400x 杠杆
         """
         try:
             exchange_info = self.get_exchange_info()
-            if exchange_info and 'symbols' in exchange_info:
-                for s in exchange_info['symbols']:
-                    if s.get('symbol') == symbol:
-                        # 获取杠杆倍数
-                        leverage = s.get('leverage', 20)  # 默认20倍
-                        return int(leverage) if leverage else 20
-            return 20  # 默认20倍
+            if exchange_info:
+                symbols_list = None
+                if 'symbols' in exchange_info:
+                    symbols_list = exchange_info['symbols']
+                elif isinstance(exchange_info, list):
+                    symbols_list = exchange_info
+                
+                if symbols_list:
+                    for s in symbols_list:
+                        if isinstance(s, dict) and s.get('symbol') == symbol:
+                            # 尝试不同的字段名获取杠杆
+                            leverage = (s.get('leverage') or 
+                                      s.get('maxLeverage') or 
+                                      s.get('max_leverage') or 
+                                      s.get('maxPositionLeverage') or
+                                      400)  # WEEX 默认最高400倍
+                            return int(float(leverage)) if leverage else 400
+            
+            # 如果找不到，返回 WEEX 默认最高杠杆
+            return 400
         except Exception as e:
             print(f"获取杠杆倍数失败: {e}")
-            return 20
+            return 400  # WEEX 默认最高400倍
     
     def get_all_symbols_with_leverage(self):
         """
@@ -214,7 +228,7 @@ class WeexAPI:
                             leverage = s.get('leverage') or s.get('maxLeverage') or s.get('max_leverage') or 20
                             if symbol:
                                 symbols_info[symbol] = {
-                                    'max_leverage': int(float(leverage)) if leverage else 20,
+                                    'max_leverage': int(float(leverage)) if leverage else 400,
                                     'price_precision': s.get('pricePrecision', 2),
                                     'quantity_precision': s.get('quantityPrecision', 3)
                                 }

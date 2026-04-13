@@ -148,13 +148,13 @@ with st.sidebar:
     
     # 根据当前币种获取最大杠杆
     weex_symbol = st.session_state.selected_symbol.replace('-', '')
-    max_leverage = 20
+    max_leverage = 400  # WEEX 默认最高400倍
     
     # 调试信息
-    st.caption(f"调试: 当前币种 {weex_symbol}, 可用信息数: {len(symbols_info)}")
+    st.caption(f"当前币种: {weex_symbol}")
     
     if weex_symbol in symbols_info:
-        max_leverage = symbols_info[weex_symbol].get('max_leverage', 20)
+        max_leverage = symbols_info[weex_symbol].get('max_leverage', 400)
         st.caption(f"{weex_symbol} 最大杠杆: {max_leverage}x")
     else:
         # 如果找不到，尝试从API实时获取
@@ -163,11 +163,11 @@ with st.sidebar:
             max_leverage = weex_temp.get_symbol_leverage(weex_symbol)
             st.caption(f"{weex_symbol} 实时杠杆: {max_leverage}x")
         except:
-            max_leverage = 20
+            max_leverage = 400
             st.caption(f"{weex_symbol} 默认杠杆: {max_leverage}x")
     
-    # 生成杠杆选项（1到最大杠杆）
-    leverage_options = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125]
+    # 生成杠杆选项（1到最大杠杆，支持最高400x）
+    leverage_options = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125, 150, 200, 250, 300, 400]
     available_leverages = [l for l in leverage_options if l <= max_leverage]
     default_leverage_index = min(2, len(available_leverages) - 1)
     
