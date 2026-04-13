@@ -145,6 +145,35 @@ class WeexAPI:
             print(f"获取服务器时间失败: {e}")
             return None
     
+    def get_all_symbols(self):
+        """获取所有交易对"""
+        try:
+            url = f"{self.base_url}/capi/v3/market/apiTradingSymbols"
+            response = requests.get(url, timeout=10, verify=False)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list):
+                    return data
+            return None
+        except Exception as e:
+            print(f"获取交易对失败: {e}")
+            return None
+    
+    def get_exchange_info(self):
+        """获取交易所信息（包含所有交易对详情）"""
+        try:
+            url = f"{self.base_url}/capi/v3/market/exchangeInfo"
+            response = requests.get(url, timeout=10, verify=False)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data
+            return None
+        except Exception as e:
+            print(f"获取交易所信息失败: {e}")
+            return None
+    
     def place_order(self, symbol, side, position_side, order_type, quantity, price=None, 
                    time_in_force='GTC', tp_trigger_price=None, sl_trigger_price=None):
         """

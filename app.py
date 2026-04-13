@@ -120,11 +120,31 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
-    # 交易对 - WEEX 合约格式
+    # 获取交易所所有交易对
+    @st.cache_data(ttl=3600)  # 缓存1小时
+    def get_available_symbols():
+        try:
+            weex = WeexAPI()
+            symbols = weex.get_all_symbols()
+            if symbols and isinstance(symbols, list):
+                # 转换为标准格式（BTCUSDT -> BTC-USDT）
+                formatted = []
+                for s in symbols:
+                    if isinstance(s, str) and 'USDT' in s:
+                        # 在USDT前加横线
+                        formatted.append(s.replace('USDT', '-USDT'))
+                return formatted if formatted else ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
+            return ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
+        except:
+            return ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
+    
+    available_symbols = get_available_symbols()
+    
+    # 交易对 - WEEX 合约格式（动态获取）
     symbol = st.selectbox(
         "交易对",
-        ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"],
-        index=0
+        available_symbols,
+        index=0 if "BTC-USDT" in available_symbols else 0
     )
     
     # 时间周期 - WEEX 支持：1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w
