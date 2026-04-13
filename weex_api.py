@@ -174,6 +174,45 @@ class WeexAPI:
             print(f"获取交易所信息失败: {e}")
             return None
     
+    def get_symbol_leverage(self, symbol):
+        """
+        获取指定交易对的最大杠杆倍数
+        """
+        try:
+            exchange_info = self.get_exchange_info()
+            if exchange_info and 'symbols' in exchange_info:
+                for s in exchange_info['symbols']:
+                    if s.get('symbol') == symbol:
+                        # 获取杠杆倍数
+                        leverage = s.get('leverage', 20)  # 默认20倍
+                        return int(leverage) if leverage else 20
+            return 20  # 默认20倍
+        except Exception as e:
+            print(f"获取杠杆倍数失败: {e}")
+            return 20
+    
+    def get_all_symbols_with_leverage(self):
+        """
+        获取所有交易对及其最大杠杆倍数
+        """
+        try:
+            exchange_info = self.get_exchange_info()
+            symbols_info = {}
+            if exchange_info and 'symbols' in exchange_info:
+                for s in exchange_info['symbols']:
+                    symbol = s.get('symbol')
+                    leverage = s.get('leverage', 20)
+                    if symbol:
+                        symbols_info[symbol] = {
+                            'max_leverage': int(leverage) if leverage else 20,
+                            'price_precision': s.get('pricePrecision', 2),
+                            'quantity_precision': s.get('quantityPrecision', 3)
+                        }
+            return symbols_info
+        except Exception as e:
+            print(f"获取交易对信息失败: {e}")
+            return {}
+    
     def get_favorite_symbols(self):
         """
         获取用户自选交易对（需要API Key）

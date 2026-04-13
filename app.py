@@ -87,6 +87,17 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
+    # 获取交易对列表和杠杆信息
+    @st.cache_data(ttl=300)
+    def get_symbols_info():
+        try:
+            weex = WeexAPI()
+            return weex.get_all_symbols_with_leverage()
+        except:
+            return {}
+    
+    symbols_info = get_symbols_info()
+    
     # 获取交易对列表（优先自选）
     def get_available_symbols(api_key, api_secret, passphrase):
         try:
@@ -135,11 +146,27 @@ with st.sidebar:
         on_change=on_timeframe_change
     )
     
+    # 根据当前币种获取最大杠杆
+    weex_symbol = st.session_state.selected_symbol.replace('-', '')
+    max_leverage = 20
+    if weex_symbol in symbols_info:
+        max_leverage = symbols_info[weex_symbol]['max_leverage']
+    
+    # 生成杠杆选项（1到最大杠杆）
+    leverage_options = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125]
+    available_leverages = [l for l in leverage_options if l <= max_leverage]
+    default_leverage_index = min(2, len(available_leverages) - 1)
+    
     # 回测参数（仅在回测模式显示）
     if mode == "策略回测":
         st.subheader("📊 回测参数")
         initial_capital = st.number_input("初始资金 (USDT)", value=10000, step=1000)
-        backtest_leverage = st.selectbox("回测杠杆", [1, 5, 10, 20], index=2)
+        backtest_leverage = st.selectbox(
+            f"回测杠杆 (最大{max_leverage}x)",
+            available_leverages,
+            index=default_leverage_index,
+            key="backtest_leverage"
+        )
         atr_sl = st.slider("止损倍数(ATR)", 0.5, 3.0, 1.5, 0.1, key="backtest_sl")
         atr_tp = st.slider("止盈倍数(ATR)", 0.5, 5.0, 2.0, 0.1, key="backtest_tp")
         
@@ -380,6 +407,18 @@ with col_chart:
 
 with col_info:
     st.subheader("📋 交易信号")
+    
+    # 杠杆选择（实盘交易）
+    if mode == "实盘交易":
+        st.subheader("⚙️ 交易设置")
+        trade_leverage = st.selectbox(
+            f"杠杆倍数 (最大{max_leverage}x)",
+            available_leverages,
+            index=default_leverage_index,
+            key="trade_leverage"
+        )
+        trade_amount = st.number_input("交易数量", value=0.01, step=0.001, format="%.3f")
+        st.markdown("---")
     
     # 计算ATR
     atr_value = (df['high'] - df['low']).rolling(window=14).mean().iloc[-1]
