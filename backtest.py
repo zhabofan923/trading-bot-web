@@ -192,19 +192,15 @@ class Backtester:
                     if drawdown_from_peak > trailing_stop_pct / 100:  # 回撤超过0.5%
                         trailing_stop_triggered = True
                 
-                # 强制止盈：盈利超过10%时锁定利润
-                take_profit_forced = pnl >= 0.10
-                
-                if hit_sl or hit_tp or reverse_signal or liquidation or trailing_stop_triggered or take_profit_forced:
+                if hit_sl or hit_tp or reverse_signal or liquidation or trailing_stop_triggered:
                     trade['exit_time'] = current_time
                     trade['exit_price'] = current_price
                     trade['pnl'] = max(-1.0, min(pnl, highest_profit))  # 限制在最高盈利和-100%之间
                     trade['pnl_amount'] = trade['risk_amount'] * trade['pnl']  # 基于风险金额计算盈亏
                     trade['exit_reason'] = ('移动止盈' if trailing_stop_triggered else 
-                                          ('强制止盈' if take_profit_forced else
                                            ('爆仓' if liquidation else
                                             ('止损' if hit_sl else
-                                             ('止盈' if hit_tp else '信号反转')))))
+                                             ('止盈' if hit_tp else '信号反转'))))
                     self.trades.append(trade)
                     capital = max(0, capital + trade['pnl_amount'])
                     position = 0
