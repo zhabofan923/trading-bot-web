@@ -97,29 +97,25 @@ with st.sidebar:
     
     symbols_info = get_symbols_info()
     
-    # 获取交易对列表（优先自选）
-    def get_available_symbols(api_key, api_secret, passphrase, symbols_info):
+    # 获取交易对列表（从交易所获取所有USDT交易对）
+    @st.cache_data(ttl=300)
+    def get_all_usdt_symbols():
         try:
-            # 先尝试获取用户的自选列表
-            if api_key and api_secret:
-                weex_auth = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
-                favorite_symbols = weex_auth.get_favorite_symbols()
-                if favorite_symbols and isinstance(favorite_symbols, list) and len(favorite_symbols) > 0:
-                    # 转换为标准格式
-                    formatted = [s.replace('USDT', '-USDT') for s in favorite_symbols if 'USDT' in s]
-                    if formatted:
-                        st.caption(f"📋 显示: 自选交易对 ({len(formatted)}个)")
-                        return formatted
-            
-            # 如果没有自选，获取常用交易对（不是全部）
-            common_symbols = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT", "XRP-USDT", "DOGE-USDT", "LTC-USDT"]
-            st.caption(f"📋 显示: 常用交易对")
-            return common_symbols
-        except Exception as e:
-            st.caption(f"📋 显示: 默认交易对")
+            weex = WeexAPI()
+            symbols = weex.get_all_symbols()
+            if symbols and isinstance(symbols, list):
+                # 过滤USDT交易对并排序
+                usdt_symbols = [s.replace('USDT', '-USDT') for s in symbols if isinstance(s, str) and 'USDT' in s and s.endswith('USDT')]
+                # 优先显示主流币种
+                priority = ['BTC-USDT', 'ETH-USDT', 'SOL-USDT', 'BCH-USDT', 'XRP-USDT', 'DOGE-USDT', 'LTC-USDT', 'ETC-USDT', 'LINK-USDT', 'ADA-USDT']
+                sorted_symbols = sorted(usdt_symbols, key=lambda x: (0 if x in priority else 1, x))
+                return sorted_symbols if sorted_symbols else ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
+            return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
+        except:
             return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
     
-    available_symbols = get_available_symbols(api_key, api_secret, passphrase, symbols_info)
+    available_symbols = get_all_usdt_symbols()
+    st.caption(f"📊 共 {len(available_symbols)} 个交易对")
     
     # 交易对选择 - 关键：使用 on_change 回调
     def on_symbol_change():
@@ -553,6 +549,16 @@ if mode == "实盘交易" and api_key and api_secret:
             
             st.write(f"💰 账户余额: {balance:.2f} USDT | 风险金额: {risk_amount:.2f} USDT (10%)")
             
+            # 风险控制检查
+            risk_manager = st.session_state.risk_manager
+            can_trade, risk_msg = risk_manager.can_trade()
+            
+            if not can_trade:
+                st.error(f"🚫 风险控制阻止交易: {risk_msg}")
+                st.info("请检查风险设置或等待明日重置")
+            else:
+                st.success(f"✅ 风险检查通过: {risk_msg}")
+            
             # 检查当前持仓
             positions = weex.get_positions()
             current_position = None
@@ -724,6 +730,45 @@ if mode == "实盘交易" and api_key and api_secret:
                     col1.metric("总交易", total_trades)
                     col2.metric("胜率", f"{winning_trades/total_trades*100:.1f}%")
                     col3.metric("总盈亏", f"{total_pnl:.2f}%")
+                    
+                    # 数据导出
+                    st.markdown("---")
+                    st.subheader("📊 数据导出")
+                    
+                    # 导出为 CSV
+                    csv = history_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 下载 CSV",
+                        data=csv,
+                        file_name=f'trading_history_{datetime.now().strftime("%Y%m%d")}.csv',
+                        mime='text/csv'
+                    )
+                    
+                    # 导出为 Excel
+                    try:
+                        import io
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            history_df.to_excel(writer, sheet_name='交易记录', index=False)
+                            
+                            # 添加统计摘要
+                            summary_df = pd.DataFrame([{
+                                '总交易次数': total_trades,
+                                '盈利次数': winning_trades,
+                                '亏损次数': total_trades - winning_trades,
+                                '胜率': f"{winning_trades/total_trades*100:.1f}%",
+                                '总盈亏': f"{total_pnl:.2f}%"
+                            }])
+                            summary_df.to_excel(writer, sheet_name='统计摘要', index=False)
+                        
+                        st.download_button(
+                            label="📥 下载 Excel",
+                            data=buffer.getvalue(),
+                            file_name=f'trading_report_{datetime.now().strftime("%Y%m%d")}.xlsx',
+                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        )
+                    except ImportError:
+                        st.info("安装 openpyxl 后可导出 Excel: pip install openpyxl")
         
         except Exception as e:
             st.error(f"自动交易错误: {e}")
