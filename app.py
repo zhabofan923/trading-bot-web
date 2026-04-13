@@ -135,6 +135,23 @@ with st.sidebar:
         on_change=on_timeframe_change
     )
     
+    # 回测参数（仅在回测模式显示）
+    if mode == "策略回测":
+        st.subheader("📊 回测参数")
+        initial_capital = st.number_input("初始资金 (USDT)", value=10000, step=1000)
+        backtest_leverage = st.selectbox("回测杠杆", [1, 5, 10, 20], index=2)
+        atr_sl = st.slider("止损倍数(ATR)", 0.5, 3.0, 1.5, 0.1, key="backtest_sl")
+        atr_tp = st.slider("止盈倍数(ATR)", 0.5, 5.0, 2.0, 0.1, key="backtest_tp")
+        
+        if st.button("🚀 开始回测", type="primary"):
+            st.session_state.run_backtest = True
+            st.session_state.backtest_params = {
+                'initial_capital': initial_capital,
+                'leverage': backtest_leverage,
+                'atr_multiplier_sl': atr_sl,
+                'atr_multiplier_tp': atr_tp
+            }
+    
     # 策略参数
     st.subheader("策略参数")
     pivot_length = st.slider("枢轴点长度", 5, 50, 10)
@@ -247,7 +264,62 @@ with col4:
         delta_color="off"
     )
 
-st.markdown("---")
+# 回测结果显示
+if mode == "策略回测" and st.session_state.get('run_backtest') and 'backtest_params' in st.session_state:
+    st.markdown("---")
+    st.subheader("📊 回测结果")
+    
+    with st.spinner("正在运行回测..."):
+        # 运行回测
+        backtest = Backtester(df, 
+                             initial_capital=st.session_state.backtest_params['initial_capital'],
+                             leverage=st.session_state.backtest_params['leverage'])
+        
+        results = backtest.run_backtest({
+            'atr_multiplier_sl': st.session_state.backtest_params['atr_multiplier_sl'],
+            'atr_multiplier_tp': st.session_state.backtest_params['atr_multiplier_tp']
+        })
+    
+    # 显示统计结果
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("总交易次数", results['total_trades'])
+        st.metric("胜率", f"{results['win_rate']:.1f}%")
+    with col2:
+        st.metric("盈利次数", results['winning_trades'])
+        st.metric("亏损次数", results['losing_trades'])
+    with col3:
+        return_color = "normal" if results['total_return'] >= 0 else "inverse"
+        st.metric("总收益率", f"{results['total_return']:.2f}%", delta_color=return_color)
+        st.metric("最大回撤", f"{results['max_drawdown']:.2f}%")
+    with col4:
+        st.metric("夏普比率", f"{results['sharpe_ratio']:.2f}")
+        st.metric("盈亏比", f"{results['profit_factor']:.2f}")
+    
+    # 显示权益曲线
+    if 'equity_curve' in results and not results['equity_curve'].empty:
+        st.subheader("📈 权益曲线")
+        fig_equity = go.Figure()
+        fig_equity.add_trace(go.Scatter(
+            x=results['equity_curve']['time'],
+            y=results['equity_curve']['equity'],
+            mode='lines',
+            name='权益曲线'
+        ))
+        fig_equity.update_layout(
+            title="资金曲线",
+            xaxis_title="时间",
+            yaxis_title="资金 (USDT)",
+            height=400
+        )
+        st.plotly_chart(fig_equity, use_container_width=True)
+    
+    # 显示交易记录
+    if 'trades' in results and not results['trades'].empty:
+        with st.expander("📋 查看交易明细"):
+            st.dataframe(results['trades'], use_container_width=True)
+    
+    st.markdown("---")
 
 # 图表和信号区域
 col_chart, col_info = st.columns([3, 1])
