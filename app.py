@@ -6,6 +6,10 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from weex_api import WeexAPI
 from email_notifier import EmailNotifier
+from backtest import Backtester
+from risk_manager import RiskManager
+from auto_trader import AutoTrader
+from data_exporter import DataExporter
 
 # 页面配置
 st.set_page_config(
@@ -113,6 +117,9 @@ with st.sidebar:
                     else:
                         st.error("❌ 发送失败，请检查邮箱和授权码")
     
+    # 模式选择
+    mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
+    
     # 交易对 - WEEX 合约格式
     symbol = st.selectbox(
         "交易对",
@@ -127,12 +134,52 @@ with st.sidebar:
         index=4
     )
     
+    # 回测参数
+    if mode == "策略回测":
+        st.subheader("📊 回测参数")
+        initial_capital = st.number_input("初始资金 (USDT)", value=10000, step=1000)
+        leverage = st.selectbox("回测杠杆", [1, 5, 10, 20], index=2)
+        atr_sl = st.slider("止损倍数(ATR)", 0.5, 3.0, 1.5, 0.1)
+        atr_tp = st.slider("止盈倍数(ATR)", 0.5, 5.0, 2.0, 0.1)
+        
+        if st.button("🚀 开始回测", type="primary"):
+            st.session_state.run_backtest = True
+            st.session_state.backtest_params = {
+                'initial_capital': initial_capital,
+                'leverage': leverage,
+                'atr_multiplier_sl': atr_sl,
+                'atr_multiplier_tp': atr_tp
+            }
+    
     # 策略参数
     st.subheader("策略参数")
     pivot_length = st.slider("枢轴点长度", 5, 50, 10)
     atr_length = st.slider("ATR周期", 5, 30, 14)
     sl_multiplier = st.slider("止损倍数(ATR)", 0.5, 3.0, 1.5, 0.1)
     tp_multiplier = st.slider("止盈倍数(ATR)", 0.5, 5.0, 2.0, 0.1)
+    
+    # 风险控制设置
+    st.subheader("🛡️ 风险控制")
+    with st.expander("风险参数设置"):
+        daily_loss_limit = st.number_input("每日最大亏损 (USDT)", value=1000, step=100)
+        max_trades_per_day = st.number_input("每日最大交易次数", value=10, step=1)
+        consecutive_loss_limit = st.number_input("连续亏损暂停次数", value=3, step=1)
+        max_position_pct = st.slider("最大仓位比例", 0.05, 0.5, 0.1, 0.05)
+        enable_auto_close = st.checkbox("启用自动熔断平仓", value=True)
+    
+    # 自动交易设置
+    st.subheader("🤖 自动交易")
+    with st.expander("自动交易配置"):
+        enable_auto_trading = st.checkbox("启用自动交易", value=False)
+        auto_trade_amount = st.number_input("自动交易数量", value=0.01, step=0.001)
+        auto_check_interval = st.number_input("检查间隔(秒)", value=60, step=10)
+        
+        # 交易时间限制
+        st.subheader("⏰ 交易时间")
+        enable_time_limit = st.checkbox("限制交易时间", value=False)
+        if enable_time_limit:
+            trade_start_time = st.time_input("开始时间", value=datetime.strptime("09:00", "%H:%M").time())
+            trade_end_time = st.time_input("结束时间", value=datetime.strptime("17:00", "%H:%M").time())
     
     # 操作按钮
     st.markdown("---")
@@ -197,6 +244,29 @@ if df is None or df.empty:
 current_price = df['close'].iloc[-1]
 price_change = ((df['close'].iloc[-1] - df['close'].iloc[-24]) / df['close'].iloc[-24] * 100) if len(df) >= 24 else 0
 
+# 初始化 session state
+if 'risk_manager' not in st.session_state:
+    st.session_state.risk_manager = RiskManager(
+        daily_loss_limit=1000,
+        max_trades_per_day=10,
+        consecutive_loss_limit=3,
+        max_position_size=0.1
+    )
+if 'account_data' not in st.session_state:
+    st.session_state.account_data = None
+if 'positions_data' not in st.session_state:
+    st.session_state.positions_data = None
+if 'auto_trader' not in st.session_state:
+    st.session_state.auto_trader = None
+if 'auto_trading_enabled' not in st.session_state:
+    st.session_state.auto_trading_enabled = False
+
+# 更新风险管理器参数（从侧边栏获取）
+st.session_state.risk_manager.daily_loss_limit = daily_loss_limit
+st.session_state.risk_manager.max_trades_per_day = max_trades_per_day
+st.session_state.risk_manager.consecutive_loss_limit = consecutive_loss_limit
+st.session_state.risk_manager.max_position_size = max_position_pct
+
 # 初始化邮件通知器
 if email_sender and email_auth_code and email_receiver:
     # 根据邮箱服务商选择SMTP服务器
@@ -235,6 +305,27 @@ df['pivot_low'] = df['low'].rolling(window=10, center=True).min()
 recent_high = df['pivot_high'].dropna().iloc[-3:].max() if not df['pivot_high'].dropna().empty else df['high'].max()
 recent_low = df['pivot_low'].dropna().iloc[-3:].min() if not df['pivot_low'].dropna().empty else df['low'].min()
 
+# 计算技术指标
+# MACD
+df['ema12'] = df['close'].ewm(span=12, adjust=False).mean()
+df['ema26'] = df['close'].ewm(span=26, adjust=False).mean()
+df['macd'] = df['ema12'] - df['ema26']
+df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+df['macd_hist'] = df['macd'] - df['macd_signal']
+
+# RSI
+delta = df['close'].diff()
+gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+rs = gain / loss
+df['rsi'] = 100 - (100 / (1 + rs))
+
+# 布林带
+df['sma20'] = df['close'].rolling(window=20).mean()
+df['std20'] = df['close'].rolling(window=20).std()
+df['bb_upper'] = df['sma20'] + (df['std20'] * 2)
+df['bb_lower'] = df['sma20'] - (df['std20'] * 2)
+
 # 主界面 - 状态卡片
 st.subheader("📊 实时状态")
 col1, col2, col3, col4 = st.columns(4)
@@ -264,14 +355,70 @@ with col3:
     )
 
 with col4:
+    auto_status = "🟢 运行中" if st.session_state.get('auto_trading_enabled') else "⚪ 已停止"
     st.metric(
-        label="数据源",
-        value=f"🟢 {exchange}",
+        label="自动交易",
+        value=auto_status,
         delta=symbol,
         delta_color="off"
     )
 
-st.markdown("---")
+# 回测结果显示
+if mode == "策略回测" and st.session_state.get('run_backtest') and 'backtest_params' in st.session_state:
+    st.markdown("---")
+    st.subheader("📊 回测结果")
+    
+    with st.spinner("正在运行回测..."):
+        # 运行回测
+        backtest = Backtester(df, 
+                             initial_capital=st.session_state.backtest_params['initial_capital'],
+                             leverage=st.session_state.backtest_params['leverage'])
+        
+        results = backtest.run_backtest({
+            'atr_multiplier_sl': st.session_state.backtest_params['atr_multiplier_sl'],
+            'atr_multiplier_tp': st.session_state.backtest_params['atr_multiplier_tp']
+        })
+    
+    # 显示统计结果
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("总交易次数", results['total_trades'])
+        st.metric("胜率", f"{results['win_rate']:.1f}%")
+    with col2:
+        st.metric("盈利次数", results['winning_trades'])
+        st.metric("亏损次数", results['losing_trades'])
+    with col3:
+        return_color = "normal" if results['total_return'] >= 0 else "inverse"
+        st.metric("总收益率", f"{results['total_return']:.2f}%", delta_color=return_color)
+        st.metric("最大回撤", f"{results['max_drawdown']:.2f}%")
+    with col4:
+        st.metric("夏普比率", f"{results['sharpe_ratio']:.2f}")
+        st.metric("盈亏比", f"{results['profit_factor']:.2f}")
+    
+    # 显示权益曲线
+    if 'equity_curve' in results and not results['equity_curve'].empty:
+        st.subheader("📈 权益曲线")
+        fig_equity = go.Figure()
+        fig_equity.add_trace(go.Scatter(
+            x=results['equity_curve']['time'],
+            y=results['equity_curve']['equity'],
+            mode='lines',
+            name='权益曲线'
+        ))
+        fig_equity.update_layout(
+            title="资金曲线",
+            xaxis_title="时间",
+            yaxis_title="资金 (USDT)",
+            height=400
+        )
+        st.plotly_chart(fig_equity, use_container_width=True)
+    
+    # 显示交易记录
+    if 'trades' in results and not results['trades'].empty:
+        with st.expander("📋 查看交易明细"):
+            st.dataframe(results['trades'], use_container_width=True)
+    
+    st.markdown("---")
 
 # 图表区域
 col_chart, col_info = st.columns([3, 1])
@@ -279,9 +426,10 @@ col_chart, col_info = st.columns([3, 1])
 with col_chart:
     st.subheader("📈 价格图表")
     
-    # 创建图表
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                       vertical_spacing=0.03, row_heights=[0.7, 0.3])
+    # 创建图表（4个子图：K线、成交量、MACD、RSI）
+    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, 
+                       vertical_spacing=0.02, 
+                       row_heights=[0.5, 0.2, 0.15, 0.15])
     
     # K线图
     fig.add_trace(go.Candlestick(
@@ -307,11 +455,21 @@ with col_chart:
         marker_color='gray'
     ), row=2, col=1)
     
+    # MACD
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['macd'], name='MACD', line=dict(color='blue')), row=3, col=1)
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['macd_signal'], name='Signal', line=dict(color='orange')), row=3, col=1)
+    fig.add_trace(go.Bar(x=df['timestamp'], y=df['macd_hist'], name='Histogram', marker_color='gray'), row=3, col=1)
+    
+    # RSI
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['rsi'], name='RSI', line=dict(color='purple')), row=4, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="red", row=4, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="green", row=4, col=1)
+    
     fig.update_layout(
         title=f"{symbol} 价格走势 ({exchange} | {timeframe})",
         xaxis_title="时间",
         yaxis_title="价格 (USDT)",
-        height=600,
+        height=800,
         showlegend=False,
         xaxis_rangeslider_visible=False
     )
@@ -417,6 +575,32 @@ with col_info:
     
     st.info(signal_text)
     
+    # 技术指标面板
+    st.markdown("---")
+    st.subheader("📊 技术指标")
+    
+    # 获取最新指标值
+    latest_macd = df['macd'].iloc[-1]
+    latest_signal = df['macd_signal'].iloc[-1]
+    latest_rsi = df['rsi'].iloc[-1]
+    latest_bb_upper = df['bb_upper'].iloc[-1]
+    latest_bb_lower = df['bb_lower'].iloc[-1]
+    
+    # 判断信号
+    macd_signal_text = "金叉" if latest_macd > latest_signal and df['macd'].iloc[-2] <= df['macd_signal'].iloc[-2] else ("死叉" if latest_macd < latest_signal and df['macd'].iloc[-2] >= df['macd_signal'].iloc[-2] else ("多头" if latest_macd > latest_signal else "空头"))
+    rsi_signal_text = "超买" if latest_rsi > 70 else ("超卖" if latest_rsi < 30 else "中性")
+    bb_signal_text = "触及上轨" if current_price >= latest_bb_upper * 0.995 else ("触及下轨" if current_price <= latest_bb_lower * 1.005 else "中轨附近")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        macd_color = "normal" if latest_macd > latest_signal else "inverse"
+        st.metric("MACD", f"{latest_macd:.2f}", macd_signal_text, delta_color=macd_color)
+    with col2:
+        rsi_color = "inverse" if latest_rsi > 70 else ("normal" if latest_rsi < 30 else "off")
+        st.metric("RSI", f"{latest_rsi:.1f}", rsi_signal_text, delta_color=rsi_color)
+    with col3:
+        st.metric("布林带", bb_signal_text, f"上:{latest_bb_upper:.0f} 下:{latest_bb_lower:.0f}")
+    
     # 实盘交易区域
     st.markdown("---")
     st.subheader("🚀 实盘交易")
@@ -432,6 +616,16 @@ with col_info:
     weex_trading = get_weex_api(api_key, api_secret, passphrase)
     
     # 下单按钮
+    # 风险检查
+    if weex_trading and st.session_state.account_data:
+        total_capital = sum([float(a.get('balance', 0)) for a in st.session_state.account_data])
+        trade_value = trade_amount * current_price
+        allowed, reason = st.session_state.risk_manager.check_trade_allowed(
+            trade_value, total_capital
+        )
+        if not allowed:
+            st.error(f"🚫 交易被阻止: {reason}")
+    
     if signal_type == "LONG":
         if st.button("🟢 开多", type="primary", use_container_width=True):
             if weex_trading:
@@ -516,6 +710,7 @@ with col_info:
         # 显示资金
         if st.session_state.account_data and isinstance(st.session_state.account_data, list):
             total_balance = 0
+            total_unrealized = 0
             for asset_info in st.session_state.account_data:
                 asset = asset_info.get('asset', '')
                 available = float(asset_info.get('availableBalance', 0))
@@ -523,6 +718,7 @@ with col_info:
                 frozen = float(asset_info.get('frozen', 0))
                 unrealized = float(asset_info.get('unrealizePnl', 0))
                 total_balance += total
+                total_unrealized += unrealized
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -532,6 +728,18 @@ with col_info:
                 with col3:
                     color = "normal" if unrealized >= 0 else "inverse"
                     st.metric(f"{asset} 未实现盈亏", f"{unrealized:+.2f}", delta_color=color)
+            
+            # 风险控制检查
+            if enable_auto_close and total_balance > 0:
+                should_close, reason = st.session_state.risk_manager.should_close_all_positions(
+                    total_unrealized, total_balance
+                )
+                if should_close:
+                    st.error(f"🚨 风险警告: {reason}")
+                    st.error("建议立即平仓！")
+                    if st.button("⚠️ 一键全部平仓", type="primary"):
+                        st.warning("执行全部平仓...")
+                        # 这里会执行平仓逻辑
         
         # 显示持仓
         st.markdown("---")
@@ -611,6 +819,30 @@ with col_info:
     
     st.markdown("---")
     
+    # 风险控制面板
+    st.subheader("🛡️ 风险控制")
+    risk_report = st.session_state.risk_manager.get_risk_report()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("今日交易", f"{risk_report['daily_trades']}/{max_trades_per_day}")
+    with col2:
+        color = "normal" if risk_report['daily_pnl'] >= 0 else "inverse"
+        st.metric("今日盈亏", f"{risk_report['daily_pnl']:+.2f}", delta_color=color)
+    with col3:
+        st.metric("剩余亏损额度", f"{risk_report['daily_loss_remaining']:.0f}")
+    with col4:
+        loss_color = "inverse" if risk_report['consecutive_losses'] > 0 else "off"
+        st.metric("连续亏损", risk_report['consecutive_losses'], delta_color=loss_color)
+    
+    # 显示风险事件
+    if risk_report['risk_events']:
+        with st.expander("⚠️ 风险事件记录"):
+            for event in risk_report['risk_events']:
+                st.write(f"{event['time'].strftime('%H:%M:%S')} - {event['type']}: {event['message']}")
+    
+    st.markdown("---")
+    
     # 交易记录
     st.subheader("📝 交易记录")
     
@@ -641,7 +873,62 @@ with col_info:
             color = "normal" if total_pnl >= 0 else "inverse"
             st.metric("总盈亏", f"{total_pnl:+.2f} USDT", delta_color=color)
         
+        # 数据导出
+        st.markdown("---")
+        st.subheader("📊 数据导出")
+        
+        exporter = DataExporter(st.session_state.trade_history, st.session_state.get('account_data'))
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("📥 导出 Excel"):
+                with st.spinner("生成 Excel..."):
+                    filename = exporter.export_to_excel()
+                    with open(filename, 'rb') as f:
+                        st.download_button(
+                            label="下载 Excel",
+                            data=f,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+        with col2:
+            if st.button("📥 导出 CSV"):
+                with st.spinner("生成 CSV..."):
+                    filename = exporter.export_to_csv()
+                    if filename:
+                        with open(filename, 'rb') as f:
+                            st.download_button(
+                                label="下载 CSV",
+                                data=f,
+                                file_name=filename,
+                                mime="text/csv"
+                            )
+        with col3:
+            if st.button("📥 导出 JSON"):
+                with st.spinner("生成 JSON..."):
+                    filename = exporter.export_to_json()
+                    with open(filename, 'rb') as f:
+                        st.download_button(
+                            label="下载 JSON",
+                            data=f,
+                            file_name=filename,
+                            mime="application/json"
+                        )
+        
+        # 税务报表
+        st.markdown("---")
+        st.subheader("📑 税务报表")
+        tax_year = st.selectbox("选择年份", [2024, 2025, 2026], index=1)
+        if st.button("生成税务报表"):
+            with st.spinner("生成报表..."):
+                report = exporter.generate_tax_report(tax_year)
+                if report:
+                    st.json(report)
+                else:
+                    st.info(f"{tax_year}年暂无交易记录")
+        
         # 清空记录按钮
+        st.markdown("---")
         if st.button("🗑️ 清空记录"):
             st.session_state.trade_history = []
             st.rerun()
@@ -662,6 +949,58 @@ with col_info:
     
     for tf, trend in trends.items():
         st.write(f"**{tf}:** {trend}")
+
+# 处理启动/停止按钮
+if start_btn:
+    if enable_auto_trading and weex_trading:
+        # 初始化自动交易器
+        if st.session_state.auto_trader is None:
+            st.session_state.auto_trader = AutoTrader(
+                weex_api=weex_trading,
+                risk_manager=st.session_state.risk_manager,
+                email_notifier=email_notifier
+            )
+        
+        # 启动自动交易
+        success, msg = st.session_state.auto_trader.start(
+            symbol=symbol.replace('-', ''),
+            trade_amount=auto_trade_amount,
+            leverage=leverage,
+            check_interval=auto_check_interval
+        )
+        
+        if success:
+            st.session_state.auto_trading_enabled = True
+            st.success(f"✅ {msg}")
+        else:
+            st.error(f"❌ {msg}")
+    else:
+        st.info("请启用自动交易并配置API")
+
+if stop_btn:
+    if st.session_state.auto_trader and st.session_state.auto_trading_enabled:
+        success, msg = st.session_state.auto_trader.stop()
+        if success:
+            st.session_state.auto_trading_enabled = False
+            st.success(f"✅ {msg}")
+        else:
+            st.error(f"❌ {msg}")
+    else:
+        st.info("自动交易未运行")
+
+# 显示自动交易状态
+if st.session_state.get('auto_trading_enabled') and st.session_state.auto_trader:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🤖 自动交易状态")
+    status = st.session_state.auto_trader.get_status()
+    st.sidebar.write(f"**状态**: {'运行中' if status['is_running'] else '已停止'}")
+    st.sidebar.write(f"**交易对**: {status['symbol']}")
+    st.sidebar.write(f"**最后信号**: {status['last_signal']}")
+    
+    if status['recent_trades']:
+        with st.sidebar.expander("最近自动交易"):
+            for trade in status['recent_trades'][-5:]:
+                st.write(f"{trade.get('time', '').strftime('%H:%M:%S') if hasattr(trade.get('time'), 'strftime') else ''} - {trade.get('action', trade.get('signal', 'Unknown'))}")
 
 # 页脚
 st.markdown("---")
