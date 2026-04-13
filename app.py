@@ -20,8 +20,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 使用 HTML meta refresh 实现自动刷新
-st.markdown('<meta http-equiv="refresh" content="1">', unsafe_allow_html=True)
+# 使用 st.rerun 实现数据刷新
+# 注意：Streamlit 会重新运行整个脚本，但会保持 widget 状态
+import time
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+# 每2秒刷新（平衡实时性和操作体验）
+if time.time() - st.session_state.last_refresh > 2:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
 
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
