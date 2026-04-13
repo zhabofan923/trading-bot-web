@@ -763,7 +763,17 @@ if mode == "实盘交易" and api_key and api_secret:
         try:
             weex = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
             account = weex.get_account()
-            balance = float(account.get('balance', 0)) if account else 0
+            # 处理不同的数据结构
+            balance = 0
+            if account:
+                if isinstance(account, list):
+                    # 如果是列表，查找 USDT
+                    for asset in account:
+                        if isinstance(asset, dict) and (asset.get('asset') == 'USDT' or asset.get('coin') == 'USDT'):
+                            balance = float(asset.get('availableBalance', asset.get('balance', asset.get('free', 0))))
+                            break
+                elif isinstance(account, dict):
+                    balance = float(account.get('balance', 0))
             
             # 仓位管理：只用10%资金
             position_size_pct = 0.1
@@ -784,9 +794,9 @@ if mode == "实盘交易" and api_key and api_secret:
             # 检查当前持仓
             positions = weex.get_positions()
             current_position = None
-            if positions:
+            if positions and isinstance(positions, list):
                 for pos in positions:
-                    if pos.get('symbol') == weex_symbol:
+                    if isinstance(pos, dict) and pos.get('symbol') == weex_symbol:
                         current_position = pos
                         break
             
