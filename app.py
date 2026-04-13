@@ -20,14 +20,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 使用 st.rerun 实现自动刷新
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = time.time()
-
-# 每3秒自动刷新
-if time.time() - st.session_state.last_refresh > 3:
-    st.session_state.last_refresh = time.time()
-    st.rerun()
+# 使用 JavaScript 实现自动刷新
+st.markdown("""
+<script>
+    // 每3秒自动刷新页面
+    setTimeout(function(){
+        window.location.reload();
+    }, 3000);
+</script>
+"", unsafe_allow_html=True)
 
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
