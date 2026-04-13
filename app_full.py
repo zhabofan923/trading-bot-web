@@ -150,21 +150,16 @@ with st.sidebar:
     # 显示列表类型
     st.caption(f"📋 显示: {list_type}交易对")
     
-    # 初始化 session state
-    if 'selected_symbol' not in st.session_state:
-        st.session_state.selected_symbol = available_symbols[0] if available_symbols else "BTC-USDT"
-    
-    # 交易对选择 - 使用 on_change 回调
-    def on_symbol_change():
-        st.session_state.selected_symbol = st.session_state.symbol_selector
-    
+    # 交易对 - WEEX 合约格式
     symbol = st.selectbox(
         "交易对",
         available_symbols,
-        index=available_symbols.index(st.session_state.selected_symbol) if st.session_state.selected_symbol in available_symbols else 0,
-        key="symbol_selector",
-        on_change=on_symbol_change
+        index=0,
+        key="symbol_selector"
     )
+    
+    # 保存到 session state 确保主界面能读取
+    st.session_state.selected_symbol = symbol
     
     # 时间周期 - WEEX 支持：1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w
     timeframe = st.selectbox(
