@@ -70,19 +70,61 @@ with st.sidebar:
         4. 获取授权码（不是登录密码）
         """)
         
-        email_provider = st.selectbox("邮箱服务商", ["163邮箱", "QQ邮箱", "其他"], index=0)
-        email_sender = st.text_input("发件人邮箱", value="", help="如：yourname@163.com")
-        email_auth_code = st.text_input("授权码", type="password", help="163邮箱授权码")
-        email_receiver = st.text_input("收件人邮箱", value="", help="可以填同一个邮箱")
+        # 初始化邮箱配置 session state
+        if 'email_config' not in st.session_state:
+            st.session_state.email_config = {
+                'provider': "163邮箱",
+                'sender': "",
+                'auth_code': "",
+                'receiver': "",
+                'enable_price': True,
+                'enable_signal': True,
+                'enable_position': True,
+                'profit_threshold': 100.0,
+                'loss_threshold': -50.0
+            }
         
-        enable_price_alert = st.checkbox("启用价格预警", value=True)
-        enable_signal_alert = st.checkbox("启用信号预警", value=True)
-        enable_position_alert = st.checkbox("启用持仓预警", value=True)
+        email_provider = st.selectbox("邮箱服务商", ["163邮箱", "QQ邮箱", "其他"], 
+                                     index=["163邮箱", "QQ邮箱", "其他"].index(st.session_state.email_config['provider']),
+                                     key="email_provider")
+        st.session_state.email_config['provider'] = email_provider
+        
+        email_sender = st.text_input("发件人邮箱", value=st.session_state.email_config['sender'], 
+                                    help="如：yourname@163.com", key="email_sender")
+        st.session_state.email_config['sender'] = email_sender
+        
+        email_auth_code = st.text_input("授权码", type="password", 
+                                       value=st.session_state.email_config['auth_code'],
+                                       help="163邮箱授权码", key="email_auth_code")
+        st.session_state.email_config['auth_code'] = email_auth_code
+        
+        email_receiver = st.text_input("收件人邮箱", value=st.session_state.email_config['receiver'],
+                                      help="可以填同一个邮箱", key="email_receiver")
+        st.session_state.email_config['receiver'] = email_receiver
+        
+        enable_price_alert = st.checkbox("启用价格预警", value=st.session_state.email_config['enable_price'],
+                                        key="enable_price_alert")
+        st.session_state.email_config['enable_price'] = enable_price_alert
+        
+        enable_signal_alert = st.checkbox("启用信号预警", value=st.session_state.email_config['enable_signal'],
+                                         key="enable_signal_alert")
+        st.session_state.email_config['enable_signal'] = enable_signal_alert
+        
+        enable_position_alert = st.checkbox("启用持仓预警", value=st.session_state.email_config['enable_position'],
+                                           key="enable_position_alert")
+        st.session_state.email_config['enable_position'] = enable_position_alert
         
         if enable_position_alert:
             st.subheader("持仓预警阈值")
-            profit_threshold = st.number_input("盈利提醒 (USDT)", value=100.0, step=10.0)
-            loss_threshold = st.number_input("亏损提醒 (USDT)", value=-50.0, step=10.0)
+            profit_threshold = st.number_input("盈利提醒 (USDT)", 
+                                              value=st.session_state.email_config['profit_threshold'], 
+                                              step=10.0, key="profit_threshold")
+            st.session_state.email_config['profit_threshold'] = profit_threshold
+            
+            loss_threshold = st.number_input("亏损提醒 (USDT)", 
+                                            value=st.session_state.email_config['loss_threshold'], 
+                                            step=10.0, key="loss_threshold")
+            st.session_state.email_config['loss_threshold'] = loss_threshold
     
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
