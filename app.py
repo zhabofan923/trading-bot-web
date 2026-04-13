@@ -20,8 +20,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 自动刷新 - 每5秒刷新一次
-st_autorefresh(interval=5000, key="data_refresh")
+# 自动刷新 - 每1秒刷新一次
+st_autorefresh(interval=1000, key="data_refresh")
 
 # 初始化 session state
 if 'selected_symbol' not in st.session_state:
