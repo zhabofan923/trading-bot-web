@@ -906,13 +906,42 @@ if mode == "实盘交易" and api_key and api_secret:
                         break
             
             # 如果有持仓，检查平仓条件
-            if current_position and auto_state['position'] and isinstance(current_position, dict):
+            if current_position and isinstance(current_position, dict):
                 pos_size = float(current_position.get('positionAmt', current_position.get('amount', current_position.get('size', 0))))
-                entry_price = auto_state['entry_price']
+                
+                # 从API获取入场价和方向
+                entry_price = float(current_position.get('avgPrice', current_position.get('entryPrice', 0)))
+                position_side = current_position.get('side', 'LONG')
+                
+                # 同步本地状态
+                auto_state['position'] = position_side
+                auto_state['entry_price'] = entry_price
+                
+                # 计算止损价（基于入场价和ATR）
+                # 如果没有ATR，使用固定百分比（2%）
+                if 'atr_value' in locals() and atr_value > 0:
+                    if position_side == 'LONG':
+                        sl_price = entry_price - atr_value * 1.5
+                        tp_price = entry_price + atr_value * 2.0
+                    else:
+                        sl_price = entry_price + atr_value * 1.5
+                        tp_price = entry_price - atr_value * 2.0
+                else:
+                    # 默认使用2%止损
+                    if position_side == 'LONG':
+                        sl_price = entry_price * 0.98
+                        tp_price = entry_price * 1.03
+                    else:
+                        sl_price = entry_price * 1.02
+                        tp_price = entry_price * 0.97
+                
+                # 更新止损止盈到状态
+                auto_state['sl_price'] = sl_price
+                auto_state['tp_price'] = tp_price
                 
                 # 计算盈亏（避免除零）
                 if entry_price and entry_price > 0:
-                    if auto_state['position'] == 'LONG':
+                    if position_side == 'LONG':
                         pnl_pct = (current_price - entry_price) / entry_price * trade_leverage
                     else:
                         pnl_pct = (entry_price - current_price) / entry_price * trade_leverage
@@ -925,20 +954,18 @@ if mode == "实盘交易" and api_key and api_secret:
                 if pnl_pct > auto_state['highest_profit_pct']:
                     auto_state['highest_profit_pct'] = pnl_pct
                 
+                # 显示当前止损止盈
+                st.caption(f"止损: ${sl_price:.2f} | 止盈: ${tp_price:.2f} | 当前: ${current_price:.2f}")
+                
                 # 检查平仓条件
                 should_close = False
                 close_reason = ""
                 
-                # 0. 爆仓保护（亏损超过 50% 立即平仓）
-                if pnl_pct < -0.50:
-                    should_close = True
-                    close_reason = f"爆仓保护 (亏损 {pnl_pct:.1%})"
-                
                 # 1. 止损
-                elif auto_state['position'] == 'LONG' and current_price <= auto_state['sl_price']:
+                if position_side == 'LONG' and current_price <= sl_price:
                     should_close = True
                     close_reason = "止损"
-                elif auto_state['position'] == 'SHORT' and current_price >= auto_state['sl_price']:
+                elif position_side == 'SHORT' and current_price >= sl_price:
                     should_close = True
                     close_reason = "止损"
                 
