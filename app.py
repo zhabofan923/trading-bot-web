@@ -24,7 +24,7 @@ st.set_page_config(
 st.markdown("""
 <script>
     // 每3秒自动刷新页面
-    setTimeout(function(){
+    setInterval(function(){
         window.location.reload();
     }, 3000);
 </script>
