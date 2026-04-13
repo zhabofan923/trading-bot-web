@@ -121,7 +121,7 @@ with st.sidebar:
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
     # 获取交易对列表（优先自选，其次全部）
-    @st.cache_data(ttl=300)  # 缓存5分钟
+    @st.cache_data(ttl=60)
     def get_available_symbols(api_key, api_secret, passphrase):
         try:
             # 先尝试获取用户的自选列表
@@ -155,7 +155,8 @@ with st.sidebar:
     symbol = st.selectbox(
         "交易对",
         available_symbols,
-        index=0
+        index=0,
+        key="symbol_selector"  # 添加key确保状态正确
     )
     
     # 时间周期 - WEEX 支持：1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w
@@ -220,8 +221,7 @@ with st.sidebar:
     with col2:
         stop_btn = st.button("⏹️ 停止机器人", type="secondary", use_container_width=True)
 
-# 获取数据函数
-@st.cache_data(ttl=60)
+# 获取数据函数（不缓存，让上层控制）
 def fetch_ohlcv(exchange_name, symbol, timeframe, limit=100):
     try:
         if exchange_name.lower() == 'weex':
@@ -250,9 +250,14 @@ def get_weex_api(api_key, api_secret, passphrase):
         return WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
     return None
 
-# 获取数据
-with st.spinner("正在获取数据..."):
-    df = fetch_ohlcv(exchange, symbol, timeframe)
+# 获取数据（根据币种和时间周期缓存）
+@st.cache_data(ttl=60)
+def get_market_data(exchange, symbol, timeframe):
+    """获取市场数据，根据参数自动缓存"""
+    return fetch_ohlcv(exchange, symbol, timeframe)
+
+with st.spinner(f"正在获取 {symbol} 数据..."):
+    df = get_market_data(exchange, symbol, timeframe)
 
 # 如果获取失败，使用模拟数据
 if df is None or df.empty:
