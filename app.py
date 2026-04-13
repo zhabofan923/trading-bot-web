@@ -507,6 +507,227 @@ with col_info:
     with col3:
         st.metric("布林带", "正常", f"上:{df['bb_upper'].iloc[-1]:.0f}")
 
+# 自动交易逻辑（实盘）
+if mode == "实盘交易" and api_key and api_secret:
+    st.markdown("---")
+    st.subheader("🤖 自动交易监控")
+    
+    # 初始化自动交易状态
+    if 'auto_trade_state' not in st.session_state:
+        st.session_state.auto_trade_state = {
+            'enabled': False,
+            'position': None,  # None, 'LONG', 'SHORT'
+            'entry_price': 0,
+            'entry_time': None,
+            'sl_price': 0,
+            'tp_price': 0,
+            'highest_profit_pct': 0,
+            'position_size': 0,
+            'trade_history': []
+        }
+    
+    auto_state = st.session_state.auto_trade_state
+    
+    # 自动交易开关
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        auto_enabled = st.toggle("启用自动交易", value=auto_state['enabled'])
+        auto_state['enabled'] = auto_enabled
+    
+    with col2:
+        if auto_state['position']:
+            st.info(f"📊 当前持仓: {auto_state['position']} | 入场价: ${auto_state['entry_price']:,.2f} | 浮动盈亏: {auto_state.get('unrealized_pnl', 0):.2f}%")
+        else:
+            st.info("📊 当前无持仓")
+    
+    if auto_enabled:
+        # 获取账户信息
+        try:
+            weex = WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
+            account = weex.get_account()
+            balance = float(account.get('balance', 0)) if account else 0
+            
+            # 仓位管理：只用10%资金
+            position_size_pct = 0.1
+            risk_amount = balance * position_size_pct
+            
+            st.write(f"💰 账户余额: {balance:.2f} USDT | 风险金额: {risk_amount:.2f} USDT (10%)")
+            
+            # 检查当前持仓
+            positions = weex.get_positions()
+            current_position = None
+            if positions:
+                for pos in positions:
+                    if pos.get('symbol') == weex_symbol:
+                        current_position = pos
+                        break
+            
+            # 如果有持仓，检查平仓条件
+            if current_position and auto_state['position']:
+                pos_size = float(current_position.get('positionAmt', 0))
+                entry_price = auto_state['entry_price']
+                
+                # 计算盈亏
+                if auto_state['position'] == 'LONG':
+                    pnl_pct = (current_price - entry_price) / entry_price * trade_leverage
+                else:
+                    pnl_pct = (entry_price - current_price) / entry_price * trade_leverage
+                
+                auto_state['unrealized_pnl'] = pnl_pct
+                
+                # 更新最高盈利
+                if pnl_pct > auto_state['highest_profit_pct']:
+                    auto_state['highest_profit_pct'] = pnl_pct
+                
+                # 检查平仓条件
+                should_close = False
+                close_reason = ""
+                
+                # 1. 止损
+                if auto_state['position'] == 'LONG' and current_price <= auto_state['sl_price']:
+                    should_close = True
+                    close_reason = "止损"
+                elif auto_state['position'] == 'SHORT' and current_price >= auto_state['sl_price']:
+                    should_close = True
+                    close_reason = "止损"
+                
+                # 2. 止盈
+                elif auto_state['position'] == 'LONG' and current_price >= auto_state['tp_price']:
+                    should_close = True
+                    close_reason = "止盈"
+                elif auto_state['position'] == 'SHORT' and current_price <= auto_state['tp_price']:
+                    should_close = True
+                    close_reason = "止盈"
+                
+                # 3. 移动止盈（盈利超过5%后，回撤0.5%）
+                elif pnl_pct > 0 and auto_state['highest_profit_pct'] > 0.05:
+                    drawdown = auto_state['highest_profit_pct'] - pnl_pct
+                    if drawdown > 0.005:  # 回撤0.5%
+                        should_close = True
+                        close_reason = f"移动止盈 (最高盈利: {auto_state['highest_profit_pct']:.2f}%, 当前: {pnl_pct:.2f}%)"
+                
+                # 4. 信号反转
+                elif (auto_state['position'] == 'LONG' and signal_type == 'SHORT') or \
+                     (auto_state['position'] == 'SHORT' and signal_type == 'LONG'):
+                    should_close = True
+                    close_reason = "信号反转"
+                
+                if should_close:
+                    st.warning(f"🚨 触发平仓: {close_reason}")
+                    
+                    # 执行平仓
+                    side = 'SELL' if auto_state['position'] == 'LONG' else 'BUY'
+                    result = weex.place_order(
+                        symbol=weex_symbol,
+                        side=side,
+                        order_type='MARKET',
+                        quantity=abs(pos_size)
+                    )
+                    
+                    if result:
+                        # 记录交易
+                        trade_record = {
+                            'entry_time': auto_state['entry_time'],
+                            'exit_time': datetime.now(),
+                            'side': auto_state['position'],
+                            'entry_price': entry_price,
+                            'exit_price': current_price,
+                            'pnl_pct': pnl_pct,
+                            'exit_reason': close_reason
+                        }
+                        auto_state['trade_history'].append(trade_record)
+                        
+                        # 重置状态
+                        auto_state['position'] = None
+                        auto_state['entry_price'] = 0
+                        auto_state['highest_profit_pct'] = 0
+                        
+                        st.success(f"✅ 平仓成功! 盈亏: {pnl_pct:.2f}%")
+                        
+                        # 发送邮件通知
+                        if email_notifier and enable_position_alert:
+                            email_notifier.send_email(
+                                f"平仓通知 - {current_symbol}",
+                                f"{current_symbol} 平仓\n方向: {trade_record['side']}\n入场: {entry_price}\n出场: {current_price}\n盈亏: {pnl_pct:.2f}%\n原因: {close_reason}",
+                                f"<h2>平仓通知</h2><p>币种: {current_symbol}</p><p>方向: {trade_record['side']}</p><p>盈亏: {pnl_pct:.2f}%</p><p>原因: {close_reason}</p>"
+                            )
+            
+            # 如果没有持仓，检查开仓信号
+            elif not current_position and signal_type in ['LONG', 'SHORT'] and balance > 0:
+                # 计算开仓数量（基于风险金额）
+                # 仓位价值 = 风险金额 × 杠杆
+                position_value = risk_amount * trade_leverage
+                # 开仓数量 = 仓位价值 / 当前价格
+                quantity = position_value / current_price
+                
+                # 根据币种精度调整数量
+                if current_symbol in ['BTC-USDT']:
+                    quantity = round(quantity, 3)
+                elif current_symbol in ['ETH-USDT']:
+                    quantity = round(quantity, 2)
+                else:
+                    quantity = round(quantity, 1)
+                
+                if quantity > 0:
+                    st.info(f"🚀 触发开仓信号: {signal_type} | 数量: {quantity}")
+                    
+                    # 执行开仓
+                    side = 'BUY' if signal_type == 'LONG' else 'SELL'
+                    result = weex.place_order(
+                        symbol=weex_symbol,
+                        side=side,
+                        order_type='MARKET',
+                        quantity=quantity
+                    )
+                    
+                    if result:
+                        # 设置止损止盈
+                        if signal_type == 'LONG':
+                            sl_price = long_entry - atr_value * 1.5
+                            tp_price = long_entry + atr_value * 2.0
+                        else:
+                            sl_price = short_entry + atr_value * 1.5
+                            tp_price = short_entry - atr_value * 2.0
+                        
+                        # 更新状态
+                        auto_state['position'] = signal_type
+                        auto_state['entry_price'] = current_price
+                        auto_state['entry_time'] = datetime.now()
+                        auto_state['sl_price'] = sl_price
+                        auto_state['tp_price'] = tp_price
+                        auto_state['highest_profit_pct'] = 0
+                        auto_state['position_size'] = quantity
+                        
+                        st.success(f"✅ 开仓成功! {signal_type} | 数量: {quantity} | 止损: ${sl_price:.2f} | 止盈: ${tp_price:.2f}")
+                        
+                        # 发送邮件通知
+                        if email_notifier and enable_signal_alert:
+                            email_notifier.send_email(
+                                f"开仓通知 - {current_symbol}",
+                                f"{current_symbol} 开仓\n方向: {signal_type}\n价格: {current_price}\n数量: {quantity}\n止损: {sl_price}\n止盈: {tp_price}",
+                                f"<h2>开仓通知</h2><p>币种: {current_symbol}</p><p>方向: {signal_type}</p><p>价格: {current_price}</p><p>数量: {quantity}</p>"
+                            )
+            
+            # 显示交易历史
+            if auto_state['trade_history']:
+                with st.expander("📋 自动交易历史"):
+                    import pandas as pd
+                    history_df = pd.DataFrame(auto_state['trade_history'])
+                    st.dataframe(history_df, use_container_width=True)
+                    
+                    # 统计
+                    total_trades = len(history_df)
+                    winning_trades = len(history_df[history_df['pnl_pct'] > 0])
+                    total_pnl = history_df['pnl_pct'].sum()
+                    
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("总交易", total_trades)
+                    col2.metric("胜率", f"{winning_trades/total_trades*100:.1f}%")
+                    col3.metric("总盈亏", f"{total_pnl:.2f}%")
+        
+        except Exception as e:
+            st.error(f"自动交易错误: {e}")
+
 # 页脚
 st.markdown("---")
 st.caption("🤖 交易机器人 v1.0 | 使用有风险，投资需谨慎")
