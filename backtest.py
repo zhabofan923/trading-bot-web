@@ -115,6 +115,7 @@ class Backtester:
         entry_price = 0
         entry_time = None
         capital = self.initial_capital
+        trade = None
         
         self.equity_curve = [{'time': df['timestamp'].iloc[0], 'equity': capital}]
         
@@ -124,8 +125,22 @@ class Backtester:
             signal = df['signal'].iloc[i]
             atr = df['atr'].iloc[i]
             
-            # 开仓
-            if position == 0 and signal != 0:
+            # 检查资金是否耗尽（爆仓）
+            if capital <= 0:
+                # 强制平仓，停止交易
+                if position != 0 and trade:
+                    trade['exit_time'] = current_time
+                    trade['exit_price'] = current_price
+                    trade['pnl'] = -1.0  # 爆仓，100%亏损
+                    trade['pnl_amount'] = -self.initial_capital
+                    self.trades.append(trade)
+                position = 0
+                trade = None
+                self.equity_curve.append({'time': current_time, 'equity': 0})
+                continue
+            
+            # 开仓（检查资金是否足够）
+            if position == 0 and signal != 0 and capital > 0:
                 position = signal
                 entry_price = current_price
                 entry_time = current_time
@@ -139,30 +154,43 @@ class Backtester:
                 }
             
             # 平仓逻辑（简化版：固定止盈止损）
-            elif position != 0:
+            elif position != 0 and trade:
                 # 计算盈亏
                 if position == 1:  # 多头
                     pnl = (current_price - entry_price) / entry_price * self.leverage
-                    # 止损或止盈
-                    if current_price <= trade['sl'] or current_price >= trade['tp'] or signal == -1:
+                    # 止损或止盈或爆仓
+                    hit_sl = current_price <= trade['sl']
+                    hit_tp = current_price >= trade['tp']
+                    reverse_signal = signal == -1
+                    # 检查是否爆仓（亏损超过本金）
+                    liquidation = pnl <= -1.0
+                    
+                    if hit_sl or hit_tp or reverse_signal or liquidation:
                         trade['exit_time'] = current_time
                         trade['exit_price'] = current_price
-                        trade['pnl'] = pnl
-                        trade['pnl_amount'] = capital * pnl
+                        trade['pnl'] = max(-1.0, pnl)  # 最大亏损100%
+                        trade['pnl_amount'] = capital * trade['pnl']
                         self.trades.append(trade)
-                        capital += trade['pnl_amount']
+                        capital = max(0, capital + trade['pnl_amount'])  # 资金不能为负
                         position = 0
+                        trade = None
                 
                 else:  # 空头
                     pnl = (entry_price - current_price) / entry_price * self.leverage
-                    if current_price >= trade['sl'] or current_price <= trade['tp'] or signal == 1:
+                    hit_sl = current_price >= trade['sl']
+                    hit_tp = current_price <= trade['tp']
+                    reverse_signal = signal == 1
+                    liquidation = pnl <= -1.0
+                    
+                    if hit_sl or hit_tp or reverse_signal or liquidation:
                         trade['exit_time'] = current_time
                         trade['exit_price'] = current_price
-                        trade['pnl'] = pnl
-                        trade['pnl_amount'] = capital * pnl
+                        trade['pnl'] = max(-1.0, pnl)
+                        trade['pnl_amount'] = capital * trade['pnl']
                         self.trades.append(trade)
-                        capital += trade['pnl_amount']
+                        capital = max(0, capital + trade['pnl_amount'])
                         position = 0
+                        trade = None
             
             # 记录权益曲线
             if position == 0:
