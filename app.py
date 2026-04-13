@@ -87,8 +87,7 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
-    # 获取交易对列表和杠杆信息
-    @st.cache_data(ttl=300)
+    # 获取交易对列表和杠杆信息（不缓存，确保实时）
     def get_symbols_info():
         try:
             weex = WeexAPI()
@@ -99,7 +98,7 @@ with st.sidebar:
     symbols_info = get_symbols_info()
     
     # 获取交易对列表（优先自选）
-    def get_available_symbols(api_key, api_secret, passphrase):
+    def get_available_symbols(api_key, api_secret, passphrase, symbols_info):
         try:
             # 先尝试获取用户的自选列表
             if api_key and api_secret:
@@ -120,7 +119,7 @@ with st.sidebar:
             st.caption(f"📋 显示: 默认交易对")
             return ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"]
     
-    available_symbols = get_available_symbols(api_key, api_secret, passphrase)
+    available_symbols = get_available_symbols(api_key, api_secret, passphrase, symbols_info)
     
     # 交易对选择 - 关键：使用 on_change 回调
     def on_symbol_change():
