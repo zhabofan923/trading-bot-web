@@ -120,24 +120,12 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
-    # 初始化 session state
-    if 'selected_symbol' not in st.session_state:
-        st.session_state.selected_symbol = "BTC-USDT"
-    
-    # 交易对选择 - 使用 on_change 回调确保同步
-    def on_symbol_change():
-        st.session_state.selected_symbol = st.session_state.symbol_selector
-    
+    # 交易对 - WEEX 合约格式
     symbol = st.selectbox(
         "交易对",
         ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"],
-        index=["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"].index(st.session_state.selected_symbol) if st.session_state.selected_symbol in ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BCH-USDT"] else 0,
-        key="symbol_selector",
-        on_change=on_symbol_change
+        index=0
     )
-    
-    # 使用 session state 中的值
-    symbol = st.session_state.selected_symbol
     
     # 时间周期 - WEEX 支持：1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w
     timeframe = st.selectbox(
