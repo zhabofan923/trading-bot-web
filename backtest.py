@@ -109,13 +109,21 @@ class Backtester:
         self.df = df
     
     def _simulate_trades(self):
-        """模拟交易"""
+        """模拟交易 - 带风险管理和移动止盈"""
         df = self.df
         position = 0  # 0: 无持仓, 1: 多头, -1: 空头
         entry_price = 0
         entry_time = None
         capital = self.initial_capital
         trade = None
+        
+        # 风险管理参数
+        position_size_pct = 0.1  # 每次只用10%资金开仓
+        max_position_value = capital * position_size_pct * self.leverage  # 最大仓位价值
+        
+        # 移动止盈参数
+        trailing_stop_pct = 0.5  # 回撤0.5%触发移动止盈
+        highest_profit = 0  # 最高浮动盈亏比例
         
         self.equity_curve = [{'time': df['timestamp'].iloc[0], 'equity': capital}]
         
@@ -127,70 +135,81 @@ class Backtester:
             
             # 检查资金是否耗尽（爆仓）
             if capital <= 0:
-                # 强制平仓，停止交易
                 if position != 0 and trade:
                     trade['exit_time'] = current_time
                     trade['exit_price'] = current_price
-                    trade['pnl'] = -1.0  # 爆仓，100%亏损
-                    trade['pnl_amount'] = -self.initial_capital
+                    trade['pnl'] = -1.0
+                    trade['pnl_amount'] = -self.initial_capital * position_size_pct
                     self.trades.append(trade)
                 position = 0
                 trade = None
                 self.equity_curve.append({'time': current_time, 'equity': 0})
                 continue
             
-            # 开仓（检查资金是否足够）
+            # 开仓（只用部分资金，控制风险）
             if position == 0 and signal != 0 and capital > 0:
                 position = signal
                 entry_price = current_price
                 entry_time = current_time
+                highest_profit = 0  # 重置最高盈利记录
+                
+                # 计算仓位大小（基于风险）
+                risk_per_trade = capital * position_size_pct  # 每笔交易风险金额
+                position_value = risk_per_trade * self.leverage  # 实际仓位价值
                 
                 trade = {
                     'entry_time': entry_time,
                     'entry_price': entry_price,
                     'side': 'LONG' if position == 1 else 'SHORT',
                     'sl': entry_price - atr * 1.5 * position,
-                    'tp': entry_price + atr * 2.0 * position
+                    'tp': entry_price + atr * 2.0 * position,
+                    'position_value': position_value,
+                    'risk_amount': risk_per_trade
                 }
             
-            # 平仓逻辑（简化版：固定止盈止损）
+            # 平仓逻辑（带移动止盈）
             elif position != 0 and trade:
-                # 计算盈亏
+                # 计算当前盈亏比例
                 if position == 1:  # 多头
                     pnl = (current_price - entry_price) / entry_price * self.leverage
-                    # 止损或止盈或爆仓
-                    hit_sl = current_price <= trade['sl']
-                    hit_tp = current_price >= trade['tp']
-                    reverse_signal = signal == -1
-                    # 检查是否爆仓（亏损超过本金）
-                    liquidation = pnl <= -1.0
-                    
-                    if hit_sl or hit_tp or reverse_signal or liquidation:
-                        trade['exit_time'] = current_time
-                        trade['exit_price'] = current_price
-                        trade['pnl'] = max(-1.0, pnl)  # 最大亏损100%
-                        trade['pnl_amount'] = capital * trade['pnl']
-                        self.trades.append(trade)
-                        capital = max(0, capital + trade['pnl_amount'])  # 资金不能为负
-                        position = 0
-                        trade = None
-                
                 else:  # 空头
                     pnl = (entry_price - current_price) / entry_price * self.leverage
-                    hit_sl = current_price >= trade['sl']
-                    hit_tp = current_price <= trade['tp']
-                    reverse_signal = signal == 1
-                    liquidation = pnl <= -1.0
-                    
-                    if hit_sl or hit_tp or reverse_signal or liquidation:
-                        trade['exit_time'] = current_time
-                        trade['exit_price'] = current_price
-                        trade['pnl'] = max(-1.0, pnl)
-                        trade['pnl_amount'] = capital * trade['pnl']
-                        self.trades.append(trade)
-                        capital = max(0, capital + trade['pnl_amount'])
-                        position = 0
-                        trade = None
+                
+                # 更新最高盈利记录
+                if pnl > highest_profit:
+                    highest_profit = pnl
+                
+                # 检查触发条件
+                hit_sl = (position == 1 and current_price <= trade['sl']) or (position == -1 and current_price >= trade['sl'])
+                hit_tp = (position == 1 and current_price >= trade['tp']) or (position == -1 and current_price <= trade['tp'])
+                reverse_signal = (position == 1 and signal == -1) or (position == -1 and signal == 1)
+                liquidation = pnl <= -1.0  # 爆仓
+                
+                # 移动止盈：盈利回撤超过阈值时平仓
+                trailing_stop_triggered = False
+                if highest_profit > 0.02:  # 盈利超过2%后启动移动止盈
+                    drawdown_from_peak = highest_profit - pnl
+                    if drawdown_from_peak > trailing_stop_pct / 100:  # 回撤超过0.5%
+                        trailing_stop_triggered = True
+                
+                # 强制止盈：盈利超过10%时锁定利润
+                take_profit_forced = pnl >= 0.10
+                
+                if hit_sl or hit_tp or reverse_signal or liquidation or trailing_stop_triggered or take_profit_forced:
+                    trade['exit_time'] = current_time
+                    trade['exit_price'] = current_price
+                    trade['pnl'] = max(-1.0, min(pnl, highest_profit))  # 限制在最高盈利和-100%之间
+                    trade['pnl_amount'] = trade['risk_amount'] * trade['pnl']  # 基于风险金额计算盈亏
+                    trade['exit_reason'] = ('移动止盈' if trailing_stop_triggered else 
+                                          ('强制止盈' if take_profit_forced else
+                                           ('爆仓' if liquidation else
+                                            ('止损' if hit_sl else
+                                             ('止盈' if hit_tp else '信号反转')))))
+                    self.trades.append(trade)
+                    capital = max(0, capital + trade['pnl_amount'])
+                    position = 0
+                    trade = None
+                    highest_profit = 0
             
             # 记录权益曲线
             if position == 0:
