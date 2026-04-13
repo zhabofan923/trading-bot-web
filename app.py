@@ -869,11 +869,14 @@ if mode == "实盘交易" and api_key and api_secret:
                 pos_size = float(current_position.get('positionAmt', current_position.get('amount', current_position.get('size', 0))))
                 entry_price = auto_state['entry_price']
                 
-                # 计算盈亏
-                if auto_state['position'] == 'LONG':
-                    pnl_pct = (current_price - entry_price) / entry_price * trade_leverage
+                # 计算盈亏（避免除零）
+                if entry_price and entry_price > 0:
+                    if auto_state['position'] == 'LONG':
+                        pnl_pct = (current_price - entry_price) / entry_price * trade_leverage
+                    else:
+                        pnl_pct = (entry_price - current_price) / entry_price * trade_leverage
                 else:
-                    pnl_pct = (entry_price - current_price) / entry_price * trade_leverage
+                    pnl_pct = 0
                 
                 auto_state['unrealized_pnl'] = pnl_pct
                 
@@ -929,24 +932,32 @@ if mode == "实盘交易" and api_key and api_secret:
                     )
                     
                     if result:
-                        # 记录交易
-                        trade_record = {
-                            'entry_time': auto_state['entry_time'],
-                            'exit_time': datetime.now(),
-                            'side': auto_state['position'],
-                            'entry_price': entry_price,
-                            'exit_price': current_price,
-                            'pnl_pct': pnl_pct,
-                            'exit_reason': close_reason
-                        }
-                        auto_state['trade_history'].append(trade_record)
-                        
-                        # 重置状态
-                        auto_state['position'] = None
-                        auto_state['entry_price'] = 0
-                        auto_state['highest_profit_pct'] = 0
-                        
-                        st.success(f"✅ 平仓成功! 盈亏: {pnl_pct:.2f}%")
+                        # 检查返回结果是否包含错误
+                        if isinstance(result, dict) and (result.get('error') or result.get('success') == False):
+                            st.error(f"❌ 平仓失败: {result.get('error') or result.get('message', '未知错误')}")
+                        else:
+                            # 记录交易
+                            trade_record = {
+                                'entry_time': auto_state['entry_time'],
+                                'exit_time': datetime.now(),
+                                'side': auto_state['position'],
+                                'entry_price': entry_price,
+                                'exit_price': current_price,
+                                'pnl_pct': pnl_pct,
+                                'exit_reason': close_reason
+                            }
+                            auto_state['trade_history'].append(trade_record)
+                            
+                            # 重置状态
+                            auto_state['position'] = None
+                            auto_state['entry_price'] = 0
+                            auto_state['highest_profit_pct'] = 0
+                            
+                            # 显示订单详情
+                            with st.expander("📋 平仓订单详情"):
+                                st.json(result)
+                            
+                            st.success(f"✅ 平仓成功! 盈亏: {pnl_pct:.2f}%")
                         
                         # 发送邮件通知
                         if email_notifier and enable_position_alert:
