@@ -400,14 +400,14 @@ with col2:
                 # 查找当前币种的持仓
                 current_pos = None
                 for pos in positions:
-                    if pos.get('symbol') == weex_symbol:
+                    if isinstance(pos, dict) and pos.get('symbol') == weex_symbol:
                         current_pos = pos
                         break
                 
-                if current_pos:
-                    pos_size = float(current_pos.get('positionAmt', 0))
-                    entry_price = float(current_pos.get('entryPrice', 0))
-                    unrealized_pnl = float(current_pos.get('unrealizedProfit', 0))
+                if current_pos and isinstance(current_pos, dict):
+                    pos_size = float(current_pos.get('positionAmt', current_pos.get('amount', current_pos.get('size', 0))))
+                    entry_price = float(current_pos.get('entryPrice', current_pos.get('avgPrice', 0)))
+                    unrealized_pnl = float(current_pos.get('unrealizedProfit', current_pos.get('pnl', 0)))
                     
                     position_value = f"{abs(pos_size):.4f} {current_symbol.replace('-USDT', '')}"
                     position_pnl = f"${unrealized_pnl:+.2f}"
@@ -801,8 +801,8 @@ if mode == "实盘交易" and api_key and api_secret:
                         break
             
             # 如果有持仓，检查平仓条件
-            if current_position and auto_state['position']:
-                pos_size = float(current_position.get('positionAmt', 0))
+            if current_position and auto_state['position'] and isinstance(current_position, dict):
+                pos_size = float(current_position.get('positionAmt', current_position.get('amount', current_position.get('size', 0))))
                 entry_price = auto_state['entry_price']
                 
                 # 计算盈亏
