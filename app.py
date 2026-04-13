@@ -788,23 +788,25 @@ if mode == "实盘交易" and api_key and api_secret:
                         break
             
             if current_pos:
-                pos_size = float(current_pos.get('positionAmt', current_pos.get('amount', current_pos.get('size', 0))))
-                entry_price = float(current_pos.get('entryPrice', current_pos.get('avgPrice', 0)))
+                # WEEX API 字段名: size, side, unrealizePnl
+                pos_size = float(current_pos.get('size', current_pos.get('positionAmt', current_pos.get('amount', 0))))
+                entry_price = float(current_pos.get('avgPrice', current_pos.get('entryPrice', 0)))
                 
-                # 尝试不同的字段名获取未实现盈亏
-                unrealized_pnl = float(current_pos.get('unrealizedProfit', 
-                    current_pos.get('pnl', 
+                # 获取未实现盈亏 (WEEX 用 unrealizePnl)
+                unrealized_pnl = float(current_pos.get('unrealizePnl', 
                     current_pos.get('unrealizedPnl', 
-                    current_pos.get('profit', 0)))))
+                    current_pos.get('unrealizedProfit', 0))))
+                
+                # 获取持仓方向 (WEEX 用 side 字段)
+                side = current_pos.get('side', 'LONG')
                 
                 # 计算盈亏百分比
-                position_value = abs(pos_size) * entry_price
-                if position_value > 0:
-                    pnl_pct = (unrealized_pnl / position_value) * 100
+                open_value = float(current_pos.get('openValue', abs(pos_size) * entry_price))
+                if open_value > 0:
+                    pnl_pct = (unrealized_pnl / open_value) * 100
                 else:
                     pnl_pct = 0
                 
-                side = 'LONG' if pos_size > 0 else 'SHORT'
                 st.info(f"📊 当前持仓: {side} | 数量: {abs(pos_size):.4f} | 盈亏: ${unrealized_pnl:+.2f} ({pnl_pct:+.2f}%)")
                 
                 # 调试信息
