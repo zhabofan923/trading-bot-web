@@ -155,8 +155,11 @@ with st.sidebar:
         "交易对",
         available_symbols,
         index=0,
-        key="symbol_selector"  # 添加key确保状态正确
+        key="symbol_selector"
     )
+    
+    # 保存到 session state 确保主界面能读取
+    st.session_state.selected_symbol = symbol
     
     # 时间周期 - WEEX 支持：1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w
     timeframe = st.selectbox(
@@ -249,9 +252,12 @@ def get_weex_api(api_key, api_secret, passphrase):
         return WeexAPI(api_key=api_key, api_secret=api_secret, passphrase=passphrase)
     return None
 
+# 使用 session state 中的 symbol（确保侧边栏选择后主界面同步）
+current_symbol = st.session_state.get('selected_symbol', symbol)
+
 # 获取数据（不使用缓存，确保实时更新）
-with st.spinner(f"正在获取 {symbol} 数据..."):
-    df = fetch_ohlcv(exchange, symbol, timeframe)
+with st.spinner(f"正在获取 {current_symbol} 数据..."):
+    df = fetch_ohlcv(exchange, current_symbol, timeframe)
 
 # 如果获取失败，使用模拟数据
 if df is None or df.empty:
@@ -496,7 +502,7 @@ with col_chart:
     fig.add_hline(y=30, line_dash="dash", line_color="green", row=4, col=1)
     
     fig.update_layout(
-        title=f"{symbol} 价格走势 ({exchange} | {timeframe})",
+        title=f"{current_symbol} 价格走势 ({exchange} | {timeframe})",
         xaxis_title="时间",
         yaxis_title="价格 (USDT)",
         height=800,
@@ -520,14 +526,14 @@ with col_info:
     if email_notifier and enable_price_alert:
         # 支撑线预警（价格接近支撑）
         if current_price <= recent_low * 1.005 and not st.session_state.alert_sent['price_support']:
-            email_notifier.send_price_alert(symbol, current_price, recent_low, "接近支撑位")
+            email_notifier.send_price_alert(current_symbol, current_price, recent_low, "接近支撑位")
             st.session_state.alert_sent['price_support'] = True
         elif current_price > recent_low * 1.01:
             st.session_state.alert_sent['price_support'] = False
         
         # 阻力线预警（价格接近阻力）
         if current_price >= recent_high * 0.995 and not st.session_state.alert_sent['price_resistance']:
-            email_notifier.send_price_alert(symbol, current_price, recent_high, "接近阻力位")
+            email_notifier.send_price_alert(current_symbol, current_price, recent_high, "接近阻力位")
             st.session_state.alert_sent['price_resistance'] = True
         elif current_price < recent_high * 0.99:
             st.session_state.alert_sent['price_resistance'] = False
@@ -553,7 +559,7 @@ with col_info:
             # 信号预警
             if email_notifier and enable_signal_alert and st.session_state.alert_sent.get('signal') != 'LONG':
                 email_notifier.send_signal_alert(
-                    symbol, 'LONG', long_entry, 
+                    current_symbol, 'LONG', long_entry, 
                     long_entry - atr_value * 1.5,
                     long_entry + atr_value * 2.0
                 )
@@ -577,7 +583,7 @@ with col_info:
             # 信号预警
             if email_notifier and enable_signal_alert and st.session_state.alert_sent.get('signal') != 'SHORT':
                 email_notifier.send_signal_alert(
-                    symbol, 'SHORT', short_entry,
+                    current_symbol, 'SHORT', short_entry,
                     short_entry + atr_value * 1.5,
                     short_entry - atr_value * 2.0
                 )
