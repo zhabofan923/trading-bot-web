@@ -198,16 +198,26 @@ class WeexAPI:
         try:
             exchange_info = self.get_exchange_info()
             symbols_info = {}
-            if exchange_info and 'symbols' in exchange_info:
-                for s in exchange_info['symbols']:
-                    symbol = s.get('symbol')
-                    leverage = s.get('leverage', 20)
-                    if symbol:
-                        symbols_info[symbol] = {
-                            'max_leverage': int(leverage) if leverage else 20,
-                            'price_precision': s.get('pricePrecision', 2),
-                            'quantity_precision': s.get('quantityPrecision', 3)
-                        }
+            if exchange_info:
+                # 尝试不同的数据结构
+                symbols_list = None
+                if 'symbols' in exchange_info:
+                    symbols_list = exchange_info['symbols']
+                elif isinstance(exchange_info, list):
+                    symbols_list = exchange_info
+                
+                if symbols_list:
+                    for s in symbols_list:
+                        if isinstance(s, dict):
+                            symbol = s.get('symbol')
+                            # 尝试不同的字段名
+                            leverage = s.get('leverage') or s.get('maxLeverage') or s.get('max_leverage') or 20
+                            if symbol:
+                                symbols_info[symbol] = {
+                                    'max_leverage': int(float(leverage)) if leverage else 20,
+                                    'price_precision': s.get('pricePrecision', 2),
+                                    'quantity_precision': s.get('quantityPrecision', 3)
+                                }
             return symbols_info
         except Exception as e:
             print(f"获取交易对信息失败: {e}")
