@@ -199,6 +199,28 @@ with st.sidebar:
     # 模式选择
     mode = st.radio("运行模式", ["实盘交易", "策略回测"], index=0)
     
+    # 初始化邮件通知器
+    email_notifier = None
+    if email_sender and email_auth_code and email_receiver:
+        # 根据邮箱服务商选择SMTP服务器
+        if email_provider == "163邮箱":
+            smtp_server = "smtp.163.com"
+            smtp_port = 25
+        elif email_provider == "QQ邮箱":
+            smtp_server = "smtp.qq.com"
+            smtp_port = 587
+        else:
+            smtp_server = "smtp.163.com"
+            smtp_port = 25
+        
+        email_notifier = EmailNotifier(
+            smtp_server=smtp_server,
+            smtp_port=smtp_port,
+            sender_email=email_sender,
+            sender_password=email_auth_code,
+            receiver_email=email_receiver
+        )
+    
     # 获取交易对列表和杠杆信息（不缓存，确保实时）
     def get_symbols_info():
         try:
