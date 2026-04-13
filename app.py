@@ -919,9 +919,11 @@ if mode == "实盘交易" and api_key and api_secret:
                     
                     # 执行平仓
                     side = 'SELL' if auto_state['position'] == 'LONG' else 'BUY'
+                    position_side = auto_state['position']  # 平仓时保持原持仓方向
                     result = weex.place_order(
                         symbol=weex_symbol,
                         side=side,
+                        position_side=position_side,
                         order_type='MARKET',
                         quantity=abs(pos_size)
                     )

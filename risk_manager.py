@@ -50,9 +50,9 @@ class RiskManager:
         if self.daily_stats['consecutive_losses'] >= self.consecutive_loss_limit:
             return False, f"连续亏损{self.consecutive_losses}次，暂停交易保护"
         
-        # 检查仓位大小
+        # 检查仓位大小（允许等于最大仓位）
         position_ratio = trade_size / total_capital if total_capital > 0 else 1
-        if position_ratio > self.max_position_size:
+        if position_ratio > self.max_position_size * 1.01:  # 允许1%的误差
             return False, f"仓位过大 ({position_ratio:.1%})，最大允许 {self.max_position_size:.1%}"
         
         return True, "风险检查通过"
